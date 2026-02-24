@@ -11,6 +11,7 @@ import (
 const (
 	OZON_API_URL     = "https://api-seller.ozon.ru"
 	RESTART_INTERVAL = 5 * time.Minute
+	DefaultPageSize = 100
 )
 
 func main() {
@@ -36,7 +37,7 @@ func main() {
 
 func runGetStocks(ozonSP *ozon.Service) {
 	log.Println("Fetching stock data...")
-	response := ozonSP.GetStocks(10)
+	response := ozonSP.GetStocks(DefaultPageSize)
 	if response != nil {
 		log.Printf("Successfully fetched stock data. Total items: %d", response.Total)
 	} else {
