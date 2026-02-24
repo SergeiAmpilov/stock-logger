@@ -13,7 +13,8 @@ type Service struct {
 	ApiToken string
 	ClientID string
 
-	GetStoks *ApiEndpoint
+	GetStoks  *ApiEndpoint
+	GetPrices *ApiEndpoint
 }
 
 func New(baseURL, apiToken, clientID string) *Service {
@@ -24,6 +25,10 @@ func New(baseURL, apiToken, clientID string) *Service {
 		GetStoks: &ApiEndpoint{
 			Method:   "POST",
 			Endpoint: "/v4/product/info/stocks",
+		},
+		GetPrices: &ApiEndpoint{
+			Method:   "POST",
+			Endpoint: "/v5/product/info/prices",
 		},
 	}
 }
