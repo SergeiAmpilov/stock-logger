@@ -13,7 +13,7 @@ import (
 
 const (
 	OZON_API_URL     = "https://api-seller.ozon.ru"
-	RESTART_INTERVAL = 5 * time.Minute
+	RESTART_INTERVAL = 1 * time.Hour
 	DefaultPageSize  = 100
 	DB_PATH          = "./stocks.db"
 )
@@ -27,7 +27,7 @@ func main() {
 
 	fmt.Printf("Configuration loaded: ClientID=%s, ApiToken=%s\n", config.ClientID, config.ApiToken)
 
-	ozonSP := ozon.New("https://api-seller.ozon.ru", config.ApiToken, config.ClientID)
+	ozonSP := ozon.New(OZON_API_URL, config.ApiToken, config.ClientID)
 
 	// Open database connection
 	db, err := sql.Open("sqlite3", DB_PATH)
@@ -36,10 +36,15 @@ func main() {
 	}
 	defer db.Close()
 
-	// Create table if not exists
+	// Create tables if not exist
 	err = createStockTable(db)
 	if err != nil {
-		log.Fatal("Failed to create table:", err)
+		log.Fatal("Failed to create stock table:", err)
+	}
+
+	err = createPriceTable(db)
+	if err != nil {
+		log.Fatal("Failed to create price table:", err)
 	}
 
 	runGetStocksAndSave(db, ozonSP)
@@ -50,12 +55,11 @@ func main() {
 	for range ticker.C {
 		runGetStocksAndSave(db, ozonSP)
 	}
-
 }
 
 func runGetStocksAndSave(db *sql.DB, ozonSP *ozon.Service) {
 	log.Println("Fetching stock data...")
-	response := ozonSP.GetStocks(10)
+	response := ozonSP.GetStocks(DefaultPageSize)
 	if response != nil {
 		log.Printf("Successfully fetched stock data. Total items: %d", response.Total)
 		err := saveStocksToDB(db, response)
@@ -67,6 +71,20 @@ func runGetStocksAndSave(db *sql.DB, ozonSP *ozon.Service) {
 	} else {
 		log.Println("Failed to fetch stock data")
 	}
+
+	log.Println("Fetching price data...")
+	priceResponse := ozonSP.GetAllPrices(DefaultPageSize) // Changed to GetPrices instead of GetAllPrices
+	if priceResponse != nil {
+		log.Printf("Successfully fetched price data. Total items: %d", priceResponse.Total)
+		err := savePricesToDB(db, priceResponse)
+		if err != nil {
+			log.Printf("Error saving prices to database: %v", err)
+		} else {
+			log.Println("Prices saved to database successfully")
+		}
+	} else {
+		log.Println("Failed to fetch price data")
+	}
 }
 
 func createStockTable(db *sql.DB) error {
@@ -77,6 +95,19 @@ func createStockTable(db *sql.DB) error {
 		sku TEXT,
 		type TEXT,
 		stock INTEGER
+	);
+	`
+	_, err := db.Exec(sqlStmt)
+	return err
+}
+
+func createPriceTable(db *sql.DB) error {
+	sqlStmt := `
+	CREATE TABLE IF NOT EXISTS prices (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		retrieved_date DATETIME,
+		sku TEXT,
+		price REAL
 	);
 	`
 	_, err := db.Exec(sqlStmt)
@@ -104,6 +135,31 @@ func saveStocksToDB(db *sql.DB, response *ozon.GetStockDataResponse) error {
 			if err != nil {
 				return err
 			}
+		}
+	}
+
+	return tx.Commit()
+}
+
+func savePricesToDB(db *sql.DB, response *ozon.GetPriceDataResponse) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	stmt, err := tx.Prepare("INSERT INTO prices(retrieved_date, sku, price) VALUES(?, ?, ?)")
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	now := time.Now().Format(time.RFC3339)
+
+	for _, item := range response.Items {
+		_, err = stmt.Exec(now, item.OfferID, item.Price.Price)
+		if err != nil {
+			return err
 		}
 	}
 

@@ -31,3 +31,29 @@ type ApiEndpoint struct {
 	Endpoint string
 	Method   string
 }
+
+type GetPriceDataRequest struct {
+	Cursor string                 `json:"cursor"`
+	Filter map[string]interface{} `json:"filter"`
+	Limit  int                    `json:"limit"`
+}
+
+type GetPriceDataResponse struct {
+	Items  []PriceItem `json:"items"`
+	Total  int         `json:"total"`
+	Cursor string      `json:"cursor"`
+}
+
+type PriceItem struct {
+	OfferID string `json:"offer_id"`
+	Price   Price  `json:"price"`
+}
+
+type Price struct {
+	Price                float64 `json:"price"`
+	CurrencyCode         string  `json:"currency_code"`
+	OldPrice             float64 `json:"old_price"`
+	MinPrice             float64 `json:"min_price"`
+	MarketingSellerPrice float64 `json:"marketing_seller_price"`
+	RetailPrice          float64 `json:"retail_price"`
+}

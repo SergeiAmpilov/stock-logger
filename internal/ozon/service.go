@@ -102,3 +102,74 @@ func (s *Service) GetStocks(limit int) *GetStockDataResponse {
 		Cursor: "",
 	}
 }
+
+// GetPrices fetches price data from the Ozon API with pagination
+func (s *Service) GetAllPrices(limit int) *GetPriceDataResponse {
+	allItems := []PriceItem{}
+	var cursor string
+	hasMorePages := true
+
+	for hasMorePages {
+		request := GetPriceDataRequest{
+			Cursor: cursor,
+			Filter: make(map[string]interface{}),
+			Limit:  limit,
+		}
+
+		requestBody, err := json.Marshal(request)
+		if err != nil {
+			log.Printf("Error marshaling request: %v", err)
+			return nil
+		}
+
+		url := s.BaseURL + s.GetPrices.Endpoint
+		req, err := http.NewRequest(s.GetPrices.Method, url, bytes.NewBuffer(requestBody))
+		if err != nil {
+			log.Printf("Error creating request: %v", err)
+			return nil
+		}
+
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Client-Id", s.ClientID)
+		req.Header.Set("Api-Key", s.ApiToken)
+
+		client := &http.Client{}
+		resp, err := client.Do(req)
+		if err != nil {
+			log.Printf("Error making request: %v", err)
+			return nil
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			log.Printf("Request failed with status: %d", resp.StatusCode)
+			return nil
+		}
+
+		responseBody, err := io.ReadAll(resp.Body)
+		if err != nil {
+			log.Printf("Error reading response: %v", err)
+			return nil
+		}
+
+		var response GetPriceDataResponse
+		err = json.Unmarshal(responseBody, &response)
+		if err != nil {
+			log.Printf("Error unmarshaling response: %v", err)
+			return nil
+		}
+
+		allItems = append(allItems, response.Items...)
+
+		// Check if there are more pages
+		cursor = response.Cursor
+		hasMorePages = cursor != ""
+	}
+
+	// Return aggregated response
+	return &GetPriceDataResponse{
+		Items:  allItems,
+		Total:  len(allItems),
+		Cursor: "",
+	}
+}
