@@ -107,7 +107,12 @@ func createPriceTable(db *sql.DB) error {
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		retrieved_date DATETIME,
 		sku TEXT,
-		price REAL
+		price REAL,
+		old_price REAL,
+		min_price REAL,
+		marketing_seller_price REAL,
+		retail_price REAL,
+		currency_code TEXT
 	);
 	`
 	_, err := db.Exec(sqlStmt)
@@ -148,7 +153,7 @@ func savePricesToDB(db *sql.DB, response *ozon.GetPriceDataResponse) error {
 	}
 	defer tx.Rollback()
 
-	stmt, err := tx.Prepare("INSERT INTO prices(retrieved_date, sku, price) VALUES(?, ?, ?)")
+	stmt, err := tx.Prepare("INSERT INTO prices(retrieved_date, sku, price, old_price, min_price, marketing_seller_price, retail_price, currency_code) VALUES(?, ?, ?, ?, ?, ?, ?, ?)")
 	if err != nil {
 		return err
 	}
@@ -157,7 +162,16 @@ func savePricesToDB(db *sql.DB, response *ozon.GetPriceDataResponse) error {
 	now := time.Now().Format(time.RFC3339)
 
 	for _, item := range response.Items {
-		_, err = stmt.Exec(now, item.OfferID, item.Price.Price)
+		_, err = stmt.Exec(
+			now, 
+			item.OfferID, 
+			item.Price.Price,
+			item.Price.OldPrice,
+			item.Price.MinPrice,
+			item.Price.MarketingSellerPrice,
+			item.Price.RetailPrice,
+			item.Price.CurrencyCode,
+		)
 		if err != nil {
 			return err
 		}
