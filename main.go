@@ -93,7 +93,6 @@ func createStockTable(db *sql.DB) error {
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		retrieved_date DATETIME,
 		sku TEXT,
-		type TEXT,
 		stock INTEGER
 	);
 	`
@@ -126,7 +125,7 @@ func saveStocksToDB(db *sql.DB, response *ozon.GetStockDataResponse) error {
 	}
 	defer tx.Rollback()
 
-	stmt, err := tx.Prepare("INSERT INTO stocks(retrieved_date, sku, type, stock) VALUES(?, ?, ?, ?)")
+	stmt, err := tx.Prepare("INSERT INTO stocks(retrieved_date, sku, stock) VALUES(?, ?, ?)")
 	if err != nil {
 		return err
 	}
@@ -136,9 +135,12 @@ func saveStocksToDB(db *sql.DB, response *ozon.GetStockDataResponse) error {
 
 	for _, item := range response.Items {
 		for _, stock := range item.Stocks {
-			_, err = stmt.Exec(now, item.OfferID, stock.Type, stock.Present)
-			if err != nil {
-				return err
+			// Only process stocks with type "fbs"
+			if stock.Type == "fbs" {
+				_, err = stmt.Exec(now, item.OfferID, stock.Present)
+				if err != nil {
+					return err
+				}
 			}
 		}
 	}
