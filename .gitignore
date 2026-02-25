@@ -1,3 +1,5 @@
 .vscode
 .env
 stocks.db
+*.xls
+*.xlsx
