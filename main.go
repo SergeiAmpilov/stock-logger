@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"log"
 	"stock-logger/internal/config"
+	"stock-logger/internal/mail"
 	"stock-logger/internal/ozon"
 	"time"
 
+	"github.com/joho/godotenv"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/xuri/excelize/v2"
 )
@@ -21,6 +23,12 @@ const (
 )
 
 func main() {
+	// Load environment variables from .env file
+	err := godotenv.Load()
+	if err != nil {
+		log.Printf("Error loading .env file: %v", err)
+	}
+
 	configService := config.New()
 	config, err := configService.Init()
 	if err != nil {
@@ -44,17 +52,17 @@ func main() {
 		log.Fatal("Failed to create report table:", err)
 	}
 
-	runGetStocksAndSave(db, ozonSP)
+	runGetStocksAndSave(db, ozonSP, config)
 
 	ticker := time.NewTicker(RESTART_INTERVAL)
 	defer ticker.Stop()
 
 	for range ticker.C {
-		runGetStocksAndSave(db, ozonSP)
+		runGetStocksAndSave(db, ozonSP, config)
 	}
 }
 
-func runGetStocksAndSave(db *sql.DB, ozonSP *ozon.Service) {
+func runGetStocksAndSave(db *sql.DB, ozonSP *ozon.Service, appConfig *config.Config) {
 	log.Println("Fetching stock data...")
 	stockResponse := ozonSP.GetStocks(DefaultPageSize)
 	if stockResponse != nil {
@@ -88,6 +96,26 @@ func runGetStocksAndSave(db *sql.DB, ozonSP *ozon.Service) {
 		log.Printf("Error generating Excel report: %v", err)
 	} else {
 		log.Println("Excel report generated successfully")
+	}
+
+	// Send email with the report
+	emailConfig := mail.EmailConfig{
+		SMTPServer: appConfig.SMTPServer,
+		SMTPPort:   appConfig.SMTPPort,
+		Username:   appConfig.EmailUsername,
+		Password:   appConfig.EmailPassword,
+		Recipients: appConfig.EmailRecipients,
+	}
+
+	if emailConfig.Username != "" && emailConfig.Password != "" && len(emailConfig.Recipients) > 0 {
+		err = mail.SendReportEmail(emailConfig, EXCEL_FILE_PATH)
+		if err != nil {
+			log.Printf("Error sending email: %v", err)
+		} else {
+			log.Println("Email sent successfully")
+		}
+	} else {
+		log.Println("Email configuration incomplete, skipping email sending")
 	}
 }
 
