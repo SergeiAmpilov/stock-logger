@@ -15,11 +15,12 @@ import (
 )
 
 const (
-	OZON_API_URL     = "https://api-seller.ozon.ru"
-	RESTART_INTERVAL = 5 * time.Minute
-	DefaultPageSize  = 100
-	DB_PATH          = "./stocks.db"
-	EXCEL_FILE_PATH  = "./report.xlsx"
+	OZON_API_URL       = "https://api-seller.ozon.ru"
+	RESTART_INTERVAL   = 5 * time.Minute
+	DefaultPageSize    = 100
+	DB_PATH            = "./stocks.db"
+	EXCEL_FILE_PATH    = "./report.xlsx"
+	LAST_N_DAYS_REPORT = 7
 )
 
 func main() {
@@ -126,7 +127,6 @@ func createReportTable(db *sql.DB) error {
 		retrieved_date DATETIME,
 		article TEXT,
 		stock INTEGER,
-		ozon_price REAL,
 		our_price REAL
 	);
 	`
@@ -191,12 +191,16 @@ func saveCombinedReport(db *sql.DB, stockResponse *ozon.GetStockDataResponse, pr
 }
 
 func generateExcelReport(db *sql.DB) error {
-	// Query all reports ordered by date descending (newest first)
+	// Calculate the date 7 days ago
+	sevenDaysAgo := time.Now().AddDate(0, 0, -LAST_N_DAYS_REPORT).Format("2006-01-02 15:04:05")
+	
+	// Query reports for the last 7 days ordered by date descending (newest first)
 	rows, err := db.Query(`
-		SELECT retrieved_date, article, stock, ozon_price, our_price 
+		SELECT retrieved_date, article, stock, our_price 
 		FROM reports 
+		WHERE retrieved_date >= ?
 		ORDER BY retrieved_date DESC
-	`)
+	`, sevenDaysAgo)
 	if err != nil {
 		return err
 	}
@@ -222,9 +226,9 @@ func generateExcelReport(db *sql.DB) error {
 	for rows.Next() {
 		var retrievedDate, article string
 		var stock int
-		var ozonPrice, ourPrice *float64
+		var ourPrice *float64
 
-		err := rows.Scan(&retrievedDate, &article, &stock, &ozonPrice, &ourPrice)
+		err := rows.Scan(&retrievedDate, &article, &stock, &ourPrice)
 		if err != nil {
 			return err
 		}
@@ -242,11 +246,6 @@ func generateExcelReport(db *sql.DB) error {
 
 		// Store data for this date
 		record := []interface{}{stock}
-		if ozonPrice != nil {
-			record = append(record, *ozonPrice)
-		} else {
-			record = append(record, "")
-		}
 		if ourPrice != nil {
 			record = append(record, *ourPrice)
 		} else {
@@ -263,11 +262,10 @@ func generateExcelReport(db *sql.DB) error {
 	for _, date := range dates {
 		// Date header
 		f.SetCellValue(sheetName, getCellName(colIndex, 0), date)
-		// Sub-headers for Stock, Ozon Price, Our Price
+		// Sub-headers for Stock and Our Price only (removed Ozon Price)
 		f.SetCellValue(sheetName, getCellName(colIndex, 1), "Остаток")
-		f.SetCellValue(sheetName, getCellName(colIndex+1, 1), "Цена озон")
-		f.SetCellValue(sheetName, getCellName(colIndex+2, 1), "Цена наша")
-		colIndex += 3
+		f.SetCellValue(sheetName, getCellName(colIndex+1, 1), "Цена наша")
+		colIndex += 2
 	}
 
 	// Write data rows
@@ -281,23 +279,21 @@ func generateExcelReport(db *sql.DB) error {
 		// For each date, write the corresponding data
 		for _, date := range dates {
 			data, exists := dateData[date]
-			if exists && len(data) >= 3 {
+			if exists && len(data) >= 2 {
 				f.SetCellValue(sheetName, getCellName(colIndex, rowIndex), data[0])   // Stock
-				f.SetCellValue(sheetName, getCellName(colIndex+1, rowIndex), data[1]) // Ozon Price
-				f.SetCellValue(sheetName, getCellName(colIndex+2, rowIndex), data[2]) // Our Price
+				f.SetCellValue(sheetName, getCellName(colIndex+1, rowIndex), data[1]) // Our Price
 			} else {
 				// Fill with empty values if no data exists for this date
 				f.SetCellValue(sheetName, getCellName(colIndex, rowIndex), "")
 				f.SetCellValue(sheetName, getCellName(colIndex+1, rowIndex), "")
-				f.SetCellValue(sheetName, getCellName(colIndex+2, rowIndex), "")
 			}
-			colIndex += 3
+			colIndex += 2
 		}
 		rowIndex++
 	}
 
 	// Auto-adjust column widths
-	for col := 'A'; col <= rune('A'+len(dates)*3); col++ {
+	for col := 'A'; col <= rune('A'+len(dates)*2); col++ {
 		f.SetColWidth(sheetName, string(col), string(col), 15)
 	}
 
