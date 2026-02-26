@@ -52,5 +52,4 @@ type PriceItem struct {
 type Price struct {
 	Price                float64 `json:"price"`
 	CurrencyCode         string  `json:"currency_code"`
-	MarketingSellerPrice float64 `json:"marketing_seller_price"`
 }

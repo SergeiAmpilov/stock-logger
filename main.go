@@ -141,7 +141,7 @@ func saveCombinedReport(db *sql.DB, stockResponse *ozon.GetStockDataResponse, pr
 	}
 	defer tx.Rollback()
 
-	stmt, err := tx.Prepare("INSERT INTO reports(retrieved_date, article, stock, ozon_price, our_price) VALUES(?, ?, ?, ?, ?)")
+	stmt, err := tx.Prepare("INSERT INTO reports(retrieved_date, article, stock, our_price) VALUES(?, ?, ?, ?)")
 	if err != nil {
 		return err
 	}
@@ -164,10 +164,9 @@ func saveCombinedReport(db *sql.DB, stockResponse *ozon.GetStockDataResponse, pr
 				if exists {
 					_, err = stmt.Exec(
 						reportTimeStr,
-						item.OfferID,                   // Article
-						stock.Present,                  // Stock
-						priceInfo.MarketingSellerPrice, // Ozon Price
-						priceInfo.Price,                // Our Price
+						item.OfferID,    // Article
+						stock.Present,   // Stock
+						priceInfo.Price, // Our Price
 					)
 					if err != nil {
 						return err
@@ -178,7 +177,6 @@ func saveCombinedReport(db *sql.DB, stockResponse *ozon.GetStockDataResponse, pr
 						reportTimeStr,
 						item.OfferID,  // Article
 						stock.Present, // Stock
-						nil,           // Ozon Price
 						nil,           // Our Price
 					)
 					if err != nil {
