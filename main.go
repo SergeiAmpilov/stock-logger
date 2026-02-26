@@ -53,13 +53,85 @@ func main() {
 		log.Fatal("Failed to create report table:", err)
 	}
 
+	// Run initial stock fetching and saving
 	runGetStocksAndSave(db, ozonSP, config)
 
-	ticker := time.NewTicker(RESTART_INTERVAL)
-	defer ticker.Stop()
+	// Ticker for API polling every 5 minutes
+	apiTicker := time.NewTicker(RESTART_INTERVAL)
+	defer apiTicker.Stop()
 
-	for range ticker.C {
-		runGetStocksAndSave(db, ozonSP, config)
+	// Timer for daily report generation at 9:00 AM Moscow time (UTC+3)
+	moscowLocation, err := time.LoadLocation("Europe/Moscow")
+	if err != nil {
+		log.Fatal("Failed to load Moscow timezone:", err)
+	}
+
+	// Calculate next 9:00 AM Moscow time
+	nextRun := calculateNextDailyRun(moscowLocation)
+	timeToNextRun := time.Until(nextRun)
+	log.Printf("Next daily report generation scheduled for: %v", nextRun)
+
+	reportTimer := time.NewTimer(timeToNextRun)
+	defer reportTimer.Stop()
+
+	for {
+		select {
+		case <-apiTicker.C:
+			runGetStocksAndSave(db, ozonSP, config)
+		case <-reportTimer.C:
+			// Generate and send report
+			runGenerateAndSendReport(db, config)
+
+			// Reset timer for next day
+			nextRun = calculateNextDailyRun(moscowLocation)
+			timeToNextRun = time.Until(nextRun)
+			log.Printf("Next daily report generation scheduled for: %v", nextRun)
+			reportTimer.Reset(timeToNextRun)
+		}
+	}
+}
+
+// Helper function to calculate next 9:00 AM Moscow time
+func calculateNextDailyRun(loc *time.Location) time.Time {
+	now := time.Now().In(loc)
+	nextRun := time.Date(now.Year(), now.Month(), now.Day(), 9, 0, 0, 0, loc)
+
+	// If it's already past 9:00 AM today, schedule for tomorrow
+	if now.Hour() >= 9 {
+		nextRun = nextRun.AddDate(0, 0, 1)
+	}
+
+	return nextRun
+}
+
+// Function to handle report generation and email sending
+func runGenerateAndSendReport(db *sql.DB, appConfig *config.Config) {
+	log.Println("Generating Excel report...")
+	err := generateExcelReport(db)
+	if err != nil {
+		log.Printf("Error generating Excel report: %v", err)
+	} else {
+		log.Println("Excel report generated successfully")
+	}
+
+	// Send email with the report
+	emailConfig := mail.EmailConfig{
+		SMTPServer: appConfig.SMTPServer,
+		SMTPPort:   appConfig.SMTPPort,
+		Username:   appConfig.EmailUsername,
+		Password:   appConfig.EmailPassword,
+		Recipients: appConfig.EmailRecipients,
+	}
+
+	if emailConfig.Username != "" && emailConfig.Password != "" && len(emailConfig.Recipients) > 0 {
+		err = mail.SendReportEmail(emailConfig, EXCEL_FILE_PATH)
+		if err != nil {
+			log.Printf("Error sending email: %v", err)
+		} else {
+			log.Println("Email sent successfully")
+		}
+	} else {
+		log.Println("Email configuration incomplete, skipping email sending")
 	}
 }
 
@@ -193,7 +265,7 @@ func saveCombinedReport(db *sql.DB, stockResponse *ozon.GetStockDataResponse, pr
 func generateExcelReport(db *sql.DB) error {
 	// Calculate the date 7 days ago
 	sevenDaysAgo := time.Now().AddDate(0, 0, -LAST_N_DAYS_REPORT).Format("2006-01-02 15:04:05")
-	
+
 	// Query reports for the last 7 days ordered by date descending (newest first)
 	rows, err := db.Query(`
 		SELECT retrieved_date, article, stock, our_price 
