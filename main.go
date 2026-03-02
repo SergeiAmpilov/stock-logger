@@ -16,11 +16,11 @@ import (
 
 const (
 	OZON_API_URL       = "https://api-seller.ozon.ru"
-	RESTART_INTERVAL   = 5 * time.Minute
-	DefaultPageSize    = 100
+	RESTART_INTERVAL   = 15 * time.Minute
+	DEFAULT_PAGE_SIZE  = 100
 	DB_PATH            = "./stocks.db"
 	EXCEL_FILE_PATH    = "./report.xlsx"
-	LAST_N_DAYS_REPORT = 7
+	HOURLY_REPORT_INTERVAL = 8 * time.Hour  // Every 12 hours
 )
 
 func main() {
@@ -60,84 +60,24 @@ func main() {
 	apiTicker := time.NewTicker(RESTART_INTERVAL)
 	defer apiTicker.Stop()
 
-	// Timer for daily report generation at 9:00 AM Moscow time (UTC+3)
-	moscowLocation, err := time.LoadLocation("Europe/Moscow")
-	if err != nil {
-		log.Fatal("Failed to load Moscow timezone:", err)
-	}
-
-	// Calculate next 9:00 AM Moscow time
-	nextRun := calculateNextDailyRun(moscowLocation)
-	timeToNextRun := time.Until(nextRun)
-	log.Printf("Next daily report generation scheduled for: %v", nextRun)
-
-	reportTimer := time.NewTimer(timeToNextRun)
-	defer reportTimer.Stop()
+	// Timer for hourly report generation (every 12 hours)
+	hourlyReportTicker := time.NewTicker(HOURLY_REPORT_INTERVAL)
+	defer hourlyReportTicker.Stop()
 
 	for {
 		select {
 		case <-apiTicker.C:
 			runGetStocksAndSave(db, ozonSP, config)
-		case <-reportTimer.C:
-			// Generate and send report
-			runGenerateAndSendReport(db, config)
-
-			// Reset timer for next day
-			nextRun = calculateNextDailyRun(moscowLocation)
-			timeToNextRun = time.Until(nextRun)
-			log.Printf("Next daily report generation scheduled for: %v", nextRun)
-			reportTimer.Reset(timeToNextRun)
+		case <-hourlyReportTicker.C:
+			// Generate and send hourly report
+			runGenerateAndSendHourlyReport(db, config)
 		}
-	}
-}
-
-// Helper function to calculate next 9:00 AM Moscow time
-func calculateNextDailyRun(loc *time.Location) time.Time {
-	now := time.Now().In(loc)
-	nextRun := time.Date(now.Year(), now.Month(), now.Day(), 9, 0, 0, 0, loc)
-
-	// If it's already past 9:00 AM today, schedule for tomorrow
-	if now.Hour() >= 9 {
-		nextRun = nextRun.AddDate(0, 0, 1)
-	}
-
-	return nextRun
-}
-
-// Function to handle report generation and email sending
-func runGenerateAndSendReport(db *sql.DB, appConfig *config.Config) {
-	log.Println("Generating Excel report...")
-	err := generateExcelReport(db)
-	if err != nil {
-		log.Printf("Error generating Excel report: %v", err)
-	} else {
-		log.Println("Excel report generated successfully")
-	}
-
-	// Send email with the report
-	emailConfig := mail.EmailConfig{
-		SMTPServer: appConfig.SMTPServer,
-		SMTPPort:   appConfig.SMTPPort,
-		Username:   appConfig.EmailUsername,
-		Password:   appConfig.EmailPassword,
-		Recipients: appConfig.EmailRecipients,
-	}
-
-	if emailConfig.Username != "" && emailConfig.Password != "" && len(emailConfig.Recipients) > 0 {
-		err = mail.SendReportEmail(emailConfig, EXCEL_FILE_PATH)
-		if err != nil {
-			log.Printf("Error sending email: %v", err)
-		} else {
-			log.Println("Email sent successfully")
-		}
-	} else {
-		log.Println("Email configuration incomplete, skipping email sending")
 	}
 }
 
 func runGetStocksAndSave(db *sql.DB, ozonSP *ozon.Service, appConfig *config.Config) {
 	log.Println("Fetching stock data...")
-	stockResponse := ozonSP.GetStocks(DefaultPageSize)
+	stockResponse := ozonSP.GetStocks(DEFAULT_PAGE_SIZE)
 	if stockResponse != nil {
 		log.Printf("Successfully fetched stock data. Total items: %d", stockResponse.Total)
 	} else {
@@ -146,7 +86,7 @@ func runGetStocksAndSave(db *sql.DB, ozonSP *ozon.Service, appConfig *config.Con
 	}
 
 	log.Println("Fetching price data...")
-	priceResponse := ozonSP.GetAllPrices(DefaultPageSize)
+	priceResponse := ozonSP.GetAllPrices(DEFAULT_PAGE_SIZE)
 	if priceResponse != nil {
 		log.Printf("Successfully fetched price data. Total items: %d", priceResponse.Total)
 	} else {
@@ -162,13 +102,16 @@ func runGetStocksAndSave(db *sql.DB, ozonSP *ozon.Service, appConfig *config.Con
 	} else {
 		log.Println("Combined report saved to database successfully")
 	}
+}
 
-	// Generate Excel report
-	err = generateExcelReport(db)
+// Function to handle hourly report generation and email sending
+func runGenerateAndSendHourlyReport(db *sql.DB, appConfig *config.Config) {
+	log.Println("Generating hourly Excel report...")
+	err := generateHourlyExcelReport(db)
 	if err != nil {
-		log.Printf("Error generating Excel report: %v", err)
+		log.Printf("Error generating hourly Excel report: %v", err)
 	} else {
-		log.Println("Excel report generated successfully")
+		log.Println("Hourly Excel report generated successfully")
 	}
 
 	// Send email with the report
@@ -181,6 +124,7 @@ func runGetStocksAndSave(db *sql.DB, ozonSP *ozon.Service, appConfig *config.Con
 	}
 
 	if emailConfig.Username != "" && emailConfig.Password != "" && len(emailConfig.Recipients) > 0 {
+		log.Printf("Attempting to send email to: %v", emailConfig.Recipients)
 		err = mail.SendReportEmail(emailConfig, EXCEL_FILE_PATH)
 		if err != nil {
 			log.Printf("Error sending email: %v", err)
@@ -189,6 +133,8 @@ func runGetStocksAndSave(db *sql.DB, ozonSP *ozon.Service, appConfig *config.Con
 		}
 	} else {
 		log.Println("Email configuration incomplete, skipping email sending")
+		log.Printf("SMTP Server: %s, Username: %s, Recipients: %v", 
+			emailConfig.SMTPServer, emailConfig.Username, emailConfig.Recipients)
 	}
 }
 
@@ -262,17 +208,18 @@ func saveCombinedReport(db *sql.DB, stockResponse *ozon.GetStockDataResponse, pr
 	return tx.Commit()
 }
 
-func generateExcelReport(db *sql.DB) error {
-	// Calculate the date 7 days ago
-	sevenDaysAgo := time.Now().AddDate(0, 0, -LAST_N_DAYS_REPORT).Format("2006-01-02 15:04:05")
-
-	// Query reports for the last 7 days ordered by date descending (newest first)
+// Generate Excel report with data from the last hour
+func generateHourlyExcelReport(db *sql.DB) error {
+	// Calculate the date one hour ago
+	oneHourAgo := time.Now().Add(-1 * time.Hour).Format("2006-01-02 15:04:05")
+	
+	// Query reports for the last hour ordered by date descending (newest first)
 	rows, err := db.Query(`
 		SELECT retrieved_date, article, stock, our_price 
 		FROM reports 
 		WHERE retrieved_date >= ?
 		ORDER BY retrieved_date DESC
-	`, sevenDaysAgo)
+	`, oneHourAgo)
 	if err != nil {
 		return err
 	}
@@ -288,13 +235,16 @@ func generateExcelReport(db *sql.DB) error {
 	f.SetActiveSheet(index)
 
 	// Define headers
-	headers := []string{"Артикул"}
-	dateHeaders := make(map[string]bool)
-	var dates []string
+	headers := []string{"Retrieved Date", "Article", "Stock", "Our Price"}
 
-	// Collect all unique dates and articles
-	records := make(map[string]map[string][]interface{})
+	// Write headers
+	for i, header := range headers {
+		cellName := getCellName(i, 0)
+		f.SetCellValue(sheetName, cellName, header)
+	}
 
+	// Write data rows
+	rowIndex := 1 // Start after headers
 	for rows.Next() {
 		var retrievedDate, article string
 		var stock int
@@ -305,68 +255,23 @@ func generateExcelReport(db *sql.DB) error {
 			return err
 		}
 
-		// Add date to headers if not already added
-		if !dateHeaders[retrievedDate] {
-			dateHeaders[retrievedDate] = true
-			dates = append(dates, retrievedDate)
-		}
-
-		// Initialize map for this article if not exists
-		if records[article] == nil {
-			records[article] = make(map[string][]interface{})
-		}
-
-		// Store data for this date
-		record := []interface{}{stock}
+		// Write the row data
+		f.SetCellValue(sheetName, getCellName(0, rowIndex), retrievedDate)
+		f.SetCellValue(sheetName, getCellName(1, rowIndex), article)
+		f.SetCellValue(sheetName, getCellName(2, rowIndex), stock)
+		
 		if ourPrice != nil {
-			record = append(record, *ourPrice)
+			f.SetCellValue(sheetName, getCellName(3, rowIndex), *ourPrice)
 		} else {
-			record = append(record, "")
+			f.SetCellValue(sheetName, getCellName(3, rowIndex), "")
 		}
-		records[article][retrievedDate] = record
-	}
-
-	// Write headers
-	colIndex := 0
-	f.SetCellValue(sheetName, getCellName(colIndex, 0), headers[0]) // Article header
-	colIndex++
-
-	for _, date := range dates {
-		// Date header
-		f.SetCellValue(sheetName, getCellName(colIndex, 0), date)
-		// Sub-headers for Stock and Our Price only (removed Ozon Price)
-		f.SetCellValue(sheetName, getCellName(colIndex, 1), "Остаток")
-		f.SetCellValue(sheetName, getCellName(colIndex+1, 1), "Цена наша")
-		colIndex += 2
-	}
-
-	// Write data rows
-	rowIndex := 2 // Start after headers
-	for article, dateData := range records {
-		colIndex := 0
-		// Write article
-		f.SetCellValue(sheetName, getCellName(colIndex, rowIndex), article)
-		colIndex++
-
-		// For each date, write the corresponding data
-		for _, date := range dates {
-			data, exists := dateData[date]
-			if exists && len(data) >= 2 {
-				f.SetCellValue(sheetName, getCellName(colIndex, rowIndex), data[0])   // Stock
-				f.SetCellValue(sheetName, getCellName(colIndex+1, rowIndex), data[1]) // Our Price
-			} else {
-				// Fill with empty values if no data exists for this date
-				f.SetCellValue(sheetName, getCellName(colIndex, rowIndex), "")
-				f.SetCellValue(sheetName, getCellName(colIndex+1, rowIndex), "")
-			}
-			colIndex += 2
-		}
+		
 		rowIndex++
 	}
 
 	// Auto-adjust column widths
-	for col := 'A'; col <= rune('A'+len(dates)*2); col++ {
-		f.SetColWidth(sheetName, string(col), string(col), 15)
+	for col := 'A'; col <= 'D'; col++ {
+		f.SetColWidth(sheetName, string(col), string(col), 20)
 	}
 
 	// Save the Excel file
