@@ -26,7 +26,6 @@ const (
 	RESTART_INTERVAL       = 15 * time.Minute
 	DEFAULT_PAGE_SIZE      = 100
 	DB_PATH                = "./stocks.db"
-	EXCEL_FILE_PATH        = "./report.xlsx"
 	HOURLY_REPORT_INTERVAL = 8 * time.Hour // Every 12 hours
 )
 
