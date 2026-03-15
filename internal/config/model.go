@@ -1,6 +1,6 @@
-// internal/config/model.go
 package config
 
+// Config holds the application configuration
 type Config struct {
 	ClientID        string
 	ApiToken        string
@@ -9,4 +9,5 @@ type Config struct {
 	EmailUsername   string
 	EmailPassword   string
 	EmailRecipients []string
+	Port            string
 }

@@ -9,6 +9,8 @@ import (
 	"stock-logger/internal/repository"
 	"time"
 
+	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/joho/godotenv"
 	"github.com/xuri/excelize/v2"
 )
@@ -46,6 +48,26 @@ func main() {
 	}
 	defer repo.Close()
 
+	// Initialize Fiber app
+	app := fiber.New()
+	app.Use(logger.New())
+
+	// Add routes
+	app.Get("/", func(c *fiber.Ctx) error {
+		return c.SendString("Stock Logger API is running!")
+	})
+
+	app.Get("/api/stocks", func(c *fiber.Ctx) error {
+		// Fetch latest stock data from the database
+		reports, err := repo.GetReportsSince(time.Time{})
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{
+				"error": "Failed to fetch stock data",
+			})
+		}
+		return c.JSON(reports)
+	})
+
 	// Run initial stock fetching and saving
 	runGetStocksAndSave(repo, ozonSP, config)
 
@@ -56,6 +78,18 @@ func main() {
 	// Timer for hourly report generation (every 12 hours)
 	hourlyReportTicker := time.NewTicker(HOURLY_REPORT_INTERVAL)
 	defer hourlyReportTicker.Stop()
+
+	// Start the Fiber server in a separate goroutine
+	go func() {
+		port := config.Port
+		if port == "" {
+			port = "3000" // default port
+		}
+		log.Printf("Starting Fiber server on port %s", port)
+		if err := app.Listen(":" + port); err != nil {
+			log.Fatalf("Fiber server failed to start: %v", err)
+		}
+	}()
 
 	for {
 		select {
