@@ -153,3 +153,32 @@ func (r *DBRepository) GetReportsSince(fromTime time.Time) ([]Report, error) {
 	
 	return reports, nil
 }
+
+// GetAllReports retrieves all reports from the database without filtering by time
+func (r *DBRepository) GetAllReports() ([]Report, error) {
+	rows, err := r.db.Query(`
+		SELECT retrieved_date, article, stock, our_price 
+		FROM reports 
+		ORDER BY retrieved_date DESC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var reports []Report
+	for rows.Next() {
+		var report Report
+		err := rows.Scan(&report.RetrievedDate, &report.Article, &report.Stock, &report.OurPrice)
+		if err != nil {
+			return nil, err
+		}
+		reports = append(reports, report)
+	}
+	
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+	
+	return reports, nil
+}
