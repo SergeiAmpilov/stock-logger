@@ -54,8 +54,5 @@ func (h *Handler) GetReports(c *fiber.Ctx) error {
 		})
 	}
 
-	// Transform the reports into grouped data by article
-	// groupedData := model.ToDataWithPagination(reports, params.Limit, params.Offset)
-
 	return c.JSON(reports)
 }
