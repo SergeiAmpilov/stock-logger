@@ -31,6 +31,8 @@ func (s *Service) Init() (*Config, error) {
 		EmailUsername: os.Getenv("EMAIL_USERNAME"),
 		EmailPassword: os.Getenv("EMAIL_PASSWORD"),
 		Port:          os.Getenv("PORT"),
+		Password:      os.Getenv("PASSWORD"),
+		JwtSecret:     os.Getenv("JWT_SECRET"),
 	}
 
 	// Split email recipients by comma

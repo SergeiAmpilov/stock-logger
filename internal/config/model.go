@@ -10,4 +10,6 @@ type Config struct {
 	EmailPassword   string
 	EmailRecipients []string
 	Port            string
+	Password        string
+	JwtSecret       string
 }

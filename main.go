@@ -8,6 +8,9 @@ import (
 	filesrepo "stock-logger/internal/filesxls/repository"
 	service_files "stock-logger/internal/filesxls/service"
 
+	auth_handler "stock-logger/internal/auth/handler"
+	auth_service "stock-logger/internal/auth/service"
+
 	"stock-logger/internal/ozon"
 
 	reports_handler "stock-logger/internal/reports/handler"
@@ -69,6 +72,8 @@ func main() {
 	excelService := service_files.NewService(repo, filesXLSRepo)
 	excelHandler := handler_files.NewHandler(excelService)
 
+	authService := auth_service.NewService(config.Password, config.JwtSecret)
+	authHandler := auth_handler.NewHandler(authService)
 	// Initialize HTML template engine
 	engine := html.New("./views", ".html") // Using views directory for templates
 
@@ -79,7 +84,7 @@ func main() {
 	app.Use(logger.New())
 
 	// Setup routes using the router package
-	router.SetupRoutes(app, reportsHandler, excelHandler)
+	router.SetupRoutes(app, reportsHandler, excelHandler, authHandler)
 
 	// Start the Fiber server in a separate goroutine
 	go func() {
