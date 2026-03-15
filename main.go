@@ -52,7 +52,7 @@ func main() {
 	defer repo.Close()
 
 	// Initialize reports service and handler
-	reportsService := service.NewService(repo)
+	reportsService := service.NewService(repo, ozonSP)
 	reportsHandler := handler.NewHandler(reportsService)
 
 	// Initialize Fiber app
