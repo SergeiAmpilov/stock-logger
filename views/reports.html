@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.Title}}</title>
+    <!-- Include Bootstrap 4.5.2 CSS - removed integrity attribute due to potential hash mismatch -->
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+</head>
+<body>
+    <div class="container mt-5">
+        <h1>{{.Title}}</h1>
+        
+        <div class="row">
+            <div class="col-md-12">
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Created At</th>
+                            <th>File Path</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="files-list">
+                        <!-- Files will be populated here by JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Fetch the list of Excel files using fetch API instead of jQuery
+            fetch('/api/excel/list')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
+                    }
+                    return response.json();
+                })
+                .then(files => {
+                    const filesList = document.getElementById('files-list');
+                    
+                    if (files.length === 0) {
+                        filesList.innerHTML = '<tr><td colspan="4">No files found</td></tr>';
+                        return;
+                    }
+                    
+                    files.forEach(function(file) {
+                        const row = document.createElement('tr');
+                        
+                        // Extract just the filename from the path for display - handle both forward and backward slashes
+                        // Check if file_path exists before processing
+                        const fileName = file.file_path ? file.file_path.replace(/\\/g, '/').split('/').pop() : 'N/A';
+                        
+                        row.innerHTML = `
+                            <td>${file.id}</td>
+                            <td>${new Date(file.created_at).toLocaleString()}</td>
+                            <td>${fileName}</td>
+                            <td><a href="${file.file_path || '#'}" class="btn btn-primary btn-sm" download>Download</a></td>
+                        `;
+                        
+                        filesList.appendChild(row);
+                    });
+                })
+                .catch(error => {
+                    console.error('Error fetching files:', error);
+                    const filesList = document.getElementById('files-list');
+                    filesList.innerHTML = '<tr><td colspan="4">Error loading files</td></tr>';
+                });
+        });
+    </script>
+</body>
+</html>

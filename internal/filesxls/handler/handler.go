@@ -36,3 +36,18 @@ func (h *Handler) GenerateReport(c *fiber.Ctx) error {
 		"filePath": filePath,
 	})
 }
+
+// ListFiles handles the request to list all Excel report files
+func (h *Handler) ListFiles(c *fiber.Ctx) error {
+	log.Println("Handling request to list Excel report files")
+
+	files, err := h.service.GetAllExcelFiles()
+	if err != nil {
+		log.Printf("Error listing Excel files: %v", err)
+		return c.Status(500).JSON(fiber.Map{
+			"error": "Failed to list Excel files",
+		})
+	}
+
+	return c.JSON(files)
+}

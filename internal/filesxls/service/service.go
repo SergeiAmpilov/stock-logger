@@ -104,6 +104,11 @@ func (s *Service) GenerateHourlyExcelReport() (string, error) {
 	return filepath, nil
 }
 
+// GetAllExcelFiles returns all Excel files from the database
+func (s *Service) GetAllExcelFiles() ([]filesrepo.FileXLS, error) {
+	return s.filesXLSRepo.GetAllFileRecords()
+}
+
 // GenerateAndSendHourlyReport generates an Excel report and sends it via email
 func (s *Service) GenerateAndSendHourlyReport(appConfig *config.Config) error {
 	log.Println("Generating hourly Excel report...")
