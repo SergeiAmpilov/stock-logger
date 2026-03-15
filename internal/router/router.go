@@ -11,7 +11,9 @@ import (
 func SetupRoutes(app *fiber.App, reportsHandler *reports_handler.Handler, excelHandler *filesxls_handler.Handler) {
 	// Add routes
 	app.Get("/", func(c *fiber.Ctx) error {
-		return c.SendString("Stock Logger API is running!")
+		return c.Render("index", fiber.Map{
+			"Title": "Stock Logger Dashboard",
+		}) // Render HTML template instead of sending plain text
 	})
 
 	app.Get("/api/stocks", reportsHandler.GetReports)

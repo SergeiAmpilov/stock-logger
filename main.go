@@ -18,6 +18,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/logger"
+	"github.com/gofiber/template/html/v2"
 	"github.com/joho/godotenv"
 )
 
@@ -68,23 +69,17 @@ func main() {
 	excelService := service_files.NewService(repo, filesXLSRepo)
 	excelHandler := handler_files.NewHandler(excelService)
 
-	// Initialize Fiber app
-	app := fiber.New()
+	// Initialize HTML template engine
+	engine := html.New("./views", ".html") // Using views directory for templates
+
+	// Initialize Fiber app with template engine
+	app := fiber.New(fiber.Config{
+		Views: engine,
+	})
 	app.Use(logger.New())
 
 	// Setup routes using the router package
 	router.SetupRoutes(app, reportsHandler, excelHandler)
-
-	// Run initial stock fetching and saving
-	reportsService.RunGetStocksAndSave()
-
-	// Ticker for API polling every 5 minutes
-	apiTicker := time.NewTicker(RESTART_INTERVAL)
-	defer apiTicker.Stop()
-
-	// Timer for hourly report generation (every 12 hours)
-	hourlyReportTicker := time.NewTicker(HOURLY_REPORT_INTERVAL)
-	defer hourlyReportTicker.Stop()
 
 	// Start the Fiber server in a separate goroutine
 	go func() {
@@ -97,6 +92,17 @@ func main() {
 			log.Fatalf("Fiber server failed to start: %v", err)
 		}
 	}()
+
+	// Run initial stock fetching and saving
+	reportsService.RunGetStocksAndSave()
+
+	// Ticker for API polling every 5 minutes
+	apiTicker := time.NewTicker(RESTART_INTERVAL)
+	defer apiTicker.Stop()
+
+	// Timer for hourly report generation (every 12 hours)
+	hourlyReportTicker := time.NewTicker(HOURLY_REPORT_INTERVAL)
+	defer hourlyReportTicker.Stop()
 
 	for {
 		select {
