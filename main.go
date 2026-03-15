@@ -19,12 +19,12 @@ import (
 )
 
 const (
-	OZON_API_URL       = "https://api-seller.ozon.ru"
-	RESTART_INTERVAL   = 15 * time.Minute
-	DEFAULT_PAGE_SIZE  = 100
-	DB_PATH            = "./stocks.db"
-	EXCEL_FILE_PATH    = "./report.xlsx"
-	HOURLY_REPORT_INTERVAL = 8 * time.Hour  // Every 12 hours
+	OZON_API_URL           = "https://api-seller.ozon.ru"
+	RESTART_INTERVAL       = 15 * time.Minute
+	DEFAULT_PAGE_SIZE      = 100
+	DB_PATH                = "./stocks.db"
+	EXCEL_FILE_PATH        = "./report.xlsx"
+	HOURLY_REPORT_INTERVAL = 8 * time.Hour // Every 12 hours
 )
 
 func main() {
@@ -63,7 +63,7 @@ func main() {
 	router.SetupRoutes(app, reportsHandler)
 
 	// Run initial stock fetching and saving
-	runGetStocksAndSave(repo, ozonSP, config)
+	reportsService.RunGetStocksAndSave(ozonSP)
 
 	// Ticker for API polling every 5 minutes
 	apiTicker := time.NewTicker(RESTART_INTERVAL)
@@ -88,40 +88,11 @@ func main() {
 	for {
 		select {
 		case <-apiTicker.C:
-			runGetStocksAndSave(repo, ozonSP, config)
+			reportsService.RunGetStocksAndSave(ozonSP)
 		case <-hourlyReportTicker.C:
 			// Generate and send hourly report
 			runGenerateAndSendHourlyReport(repo, config)
 		}
-	}
-}
-
-func runGetStocksAndSave(repo *repository.DBRepository, ozonSP *ozon.Service, appConfig *config.Config) {
-	log.Println("Fetching stock data...")
-	stockResponse := ozonSP.GetStocks(DEFAULT_PAGE_SIZE)
-	if stockResponse != nil {
-		log.Printf("Successfully fetched stock data. Total items: %d", stockResponse.Total)
-	} else {
-		log.Println("Failed to fetch stock data")
-		return
-	}
-
-	log.Println("Fetching price data...")
-	priceResponse := ozonSP.GetAllPrices(DEFAULT_PAGE_SIZE)
-	if priceResponse != nil {
-		log.Printf("Successfully fetched price data. Total items: %d", priceResponse.Total)
-	} else {
-		log.Println("Failed to fetch price data")
-		return
-	}
-
-	// Combine stock and price data and save to report table
-	now := time.Now()
-	err := repo.SaveCombinedReport(stockResponse, priceResponse, now)
-	if err != nil {
-		log.Printf("Error saving combined report to database: %v", err)
-	} else {
-		log.Println("Combined report saved to database successfully")
 	}
 }
 
@@ -154,7 +125,7 @@ func runGenerateAndSendHourlyReport(repo *repository.DBRepository, appConfig *co
 		}
 	} else {
 		log.Println("Email configuration incomplete, skipping email sending")
-		log.Printf("SMTP Server: %s, Username: %s, Recipients: %v", 
+		log.Printf("SMTP Server: %s, Username: %s, Recipients: %v",
 			emailConfig.SMTPServer, emailConfig.Username, emailConfig.Recipients)
 	}
 }
@@ -163,7 +134,7 @@ func runGenerateAndSendHourlyReport(repo *repository.DBRepository, appConfig *co
 func generateHourlyExcelReport(repo *repository.DBRepository) error {
 	// Calculate the date one hour ago
 	oneHourAgo := time.Now().Add(-1 * time.Hour)
-	
+
 	// Get reports for the last hour
 	reports, err := repo.GetReportsSince(oneHourAgo)
 	if err != nil {
@@ -191,11 +162,11 @@ func generateHourlyExcelReport(repo *repository.DBRepository) error {
 	// Write data rows
 	for i, report := range reports {
 		rowIndex := i + 1 // Start after headers
-		
+
 		f.SetCellValue(sheetName, getCellName(0, rowIndex), report.RetrievedDate)
 		f.SetCellValue(sheetName, getCellName(1, rowIndex), report.Article)
 		f.SetCellValue(sheetName, getCellName(2, rowIndex), report.Stock)
-		
+
 		if report.OurPrice != nil {
 			f.SetCellValue(sheetName, getCellName(3, rowIndex), *report.OurPrice)
 		} else {
