@@ -2,24 +2,24 @@ package service
 
 import (
 	"log"
+	"time"
 	"stock-logger/internal/ozon"
 	"stock-logger/internal/reports/repository"
-	"time"
 )
 
 const DEFAULT_PAGE_SIZE = 100
 
 // Service handles business logic for reports
 type Service struct {
-	repo   *repository.DBRepository
+	repo *repository.DBRepository
 	ozonSP *ozon.Service
 }
 
 // NewService creates a new reports service
-func NewService(repo *repository.DBRepository, ozon *ozon.Service) *Service {
+func NewService(repo *repository.DBRepository, ozonSP *ozon.Service) *Service {
 	return &Service{
-		repo:   repo,
-		ozonSP: ozon,
+		repo: repo,
+		ozonSP: ozonSP,
 	}
 }
 

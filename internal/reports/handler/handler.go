@@ -4,6 +4,7 @@ import (
 	"log"
 
 	"github.com/gofiber/fiber/v2"
+	"stock-logger/internal/reports/model"
 	"stock-logger/internal/reports/service"
 )
 
@@ -31,5 +32,8 @@ func (h *Handler) GetReports(c *fiber.Ctx) error {
 		})
 	}
 	
-	return c.JSON(reports)
+	// Transform the reports into grouped data by article
+	groupedData := model.ToData(reports)
+	
+	return c.JSON(groupedData)
 }
