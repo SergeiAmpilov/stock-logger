@@ -16,7 +16,7 @@ type Report struct {
 	OurPrice      *float64
 }
 
-// DBRepository handles all database operations
+// DBRepository handles all database operations for reports
 type DBRepository struct {
 	db *sql.DB
 }

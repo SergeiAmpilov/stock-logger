@@ -6,7 +6,9 @@ import (
 	"stock-logger/internal/config"
 	"stock-logger/internal/mail"
 	"stock-logger/internal/ozon"
-	"stock-logger/internal/repository"
+	"stock-logger/internal/reports/handler"
+	"stock-logger/internal/reports/repository"
+	"stock-logger/internal/reports/service"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -48,6 +50,10 @@ func main() {
 	}
 	defer repo.Close()
 
+	// Initialize reports service and handler
+	reportsService := service.NewService(repo)
+	reportsHandler := handler.NewHandler(reportsService)
+
 	// Initialize Fiber app
 	app := fiber.New()
 	app.Use(logger.New())
@@ -57,16 +63,7 @@ func main() {
 		return c.SendString("Stock Logger API is running!")
 	})
 
-	app.Get("/api/stocks", func(c *fiber.Ctx) error {
-		// Fetch latest stock data from the database
-		reports, err := repo.GetReportsSince(time.Time{})
-		if err != nil {
-			return c.Status(500).JSON(fiber.Map{
-				"error": "Failed to fetch stock data",
-			})
-		}
-		return c.JSON(reports)
-	})
+	app.Get("/api/stocks", reportsHandler.GetReports)
 
 	// Run initial stock fetching and saving
 	runGetStocksAndSave(repo, ozonSP, config)
