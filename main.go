@@ -1,16 +1,15 @@
 package main
 
 import (
-	"database/sql"
 	"fmt"
 	"log"
 	"stock-logger/internal/config"
 	"stock-logger/internal/mail"
 	"stock-logger/internal/ozon"
+	"stock-logger/internal/repository"
 	"time"
 
 	"github.com/joho/godotenv"
-	_ "github.com/mattn/go-sqlite3"
 	"github.com/xuri/excelize/v2"
 )
 
@@ -40,21 +39,15 @@ func main() {
 
 	ozonSP := ozon.New(OZON_API_URL, config.ApiToken, config.ClientID)
 
-	// Open database connection
-	db, err := sql.Open("sqlite3", DB_PATH)
+	// Initialize database repository
+	repo, err := repository.NewDBRepository(DB_PATH)
 	if err != nil {
-		log.Fatal("Failed to open database:", err)
+		log.Fatal("Failed to initialize database repository:", err)
 	}
-	defer db.Close()
-
-	// Create report table
-	err = createReportTable(db)
-	if err != nil {
-		log.Fatal("Failed to create report table:", err)
-	}
+	defer repo.Close()
 
 	// Run initial stock fetching and saving
-	runGetStocksAndSave(db, ozonSP, config)
+	runGetStocksAndSave(repo, ozonSP, config)
 
 	// Ticker for API polling every 5 minutes
 	apiTicker := time.NewTicker(RESTART_INTERVAL)
@@ -67,15 +60,15 @@ func main() {
 	for {
 		select {
 		case <-apiTicker.C:
-			runGetStocksAndSave(db, ozonSP, config)
+			runGetStocksAndSave(repo, ozonSP, config)
 		case <-hourlyReportTicker.C:
 			// Generate and send hourly report
-			runGenerateAndSendHourlyReport(db, config)
+			runGenerateAndSendHourlyReport(repo, config)
 		}
 	}
 }
 
-func runGetStocksAndSave(db *sql.DB, ozonSP *ozon.Service, appConfig *config.Config) {
+func runGetStocksAndSave(repo *repository.DBRepository, ozonSP *ozon.Service, appConfig *config.Config) {
 	log.Println("Fetching stock data...")
 	stockResponse := ozonSP.GetStocks(DEFAULT_PAGE_SIZE)
 	if stockResponse != nil {
@@ -96,7 +89,7 @@ func runGetStocksAndSave(db *sql.DB, ozonSP *ozon.Service, appConfig *config.Con
 
 	// Combine stock and price data and save to report table
 	now := time.Now()
-	err := saveCombinedReport(db, stockResponse, priceResponse, now)
+	err := repo.SaveCombinedReport(stockResponse, priceResponse, now)
 	if err != nil {
 		log.Printf("Error saving combined report to database: %v", err)
 	} else {
@@ -105,9 +98,9 @@ func runGetStocksAndSave(db *sql.DB, ozonSP *ozon.Service, appConfig *config.Con
 }
 
 // Function to handle hourly report generation and email sending
-func runGenerateAndSendHourlyReport(db *sql.DB, appConfig *config.Config) {
+func runGenerateAndSendHourlyReport(repo *repository.DBRepository, appConfig *config.Config) {
 	log.Println("Generating hourly Excel report...")
-	err := generateHourlyExcelReport(db)
+	err := generateHourlyExcelReport(repo)
 	if err != nil {
 		log.Printf("Error generating hourly Excel report: %v", err)
 	} else {
@@ -138,92 +131,16 @@ func runGenerateAndSendHourlyReport(db *sql.DB, appConfig *config.Config) {
 	}
 }
 
-func createReportTable(db *sql.DB) error {
-	sqlStmt := `
-	CREATE TABLE IF NOT EXISTS reports (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		retrieved_date DATETIME,
-		article TEXT,
-		stock INTEGER,
-		our_price REAL
-	);
-	`
-	_, err := db.Exec(sqlStmt)
-	return err
-}
-
-func saveCombinedReport(db *sql.DB, stockResponse *ozon.GetStockDataResponse, priceResponse *ozon.GetPriceDataResponse, reportTime time.Time) error {
-	tx, err := db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	stmt, err := tx.Prepare("INSERT INTO reports(retrieved_date, article, stock, our_price) VALUES(?, ?, ?, ?)")
-	if err != nil {
-		return err
-	}
-	defer stmt.Close()
-
-	reportTimeStr := reportTime.Format(time.RFC3339)
-
-	// Create a map of prices by OfferID for quick lookup
-	priceMap := make(map[string]ozon.Price)
-	for _, item := range priceResponse.Items {
-		priceMap[item.OfferID] = item.Price
-	}
-
-	// Process stock data and match with prices
-	for _, item := range stockResponse.Items {
-		for _, stock := range item.Stocks {
-			// Only process stocks with type "fbs"
-			if stock.Type == "fbs" {
-				priceInfo, exists := priceMap[item.OfferID]
-				if exists {
-					_, err = stmt.Exec(
-						reportTimeStr,
-						item.OfferID,    // Article
-						stock.Present,   // Stock
-						priceInfo.Price, // Our Price
-					)
-					if err != nil {
-						return err
-					}
-				} else {
-					// If no price info exists for this item, insert with NULL prices
-					_, err = stmt.Exec(
-						reportTimeStr,
-						item.OfferID,  // Article
-						stock.Present, // Stock
-						nil,           // Our Price
-					)
-					if err != nil {
-						return err
-					}
-				}
-			}
-		}
-	}
-
-	return tx.Commit()
-}
-
 // Generate Excel report with data from the last hour
-func generateHourlyExcelReport(db *sql.DB) error {
+func generateHourlyExcelReport(repo *repository.DBRepository) error {
 	// Calculate the date one hour ago
-	oneHourAgo := time.Now().Add(-1 * time.Hour).Format("2006-01-02 15:04:05")
+	oneHourAgo := time.Now().Add(-1 * time.Hour)
 	
-	// Query reports for the last hour ordered by date descending (newest first)
-	rows, err := db.Query(`
-		SELECT retrieved_date, article, stock, our_price 
-		FROM reports 
-		WHERE retrieved_date >= ?
-		ORDER BY retrieved_date DESC
-	`, oneHourAgo)
+	// Get reports for the last hour
+	reports, err := repo.GetReportsSince(oneHourAgo)
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
 
 	// Create Excel file
 	f := excelize.NewFile()
@@ -244,29 +161,18 @@ func generateHourlyExcelReport(db *sql.DB) error {
 	}
 
 	// Write data rows
-	rowIndex := 1 // Start after headers
-	for rows.Next() {
-		var retrievedDate, article string
-		var stock int
-		var ourPrice *float64
-
-		err := rows.Scan(&retrievedDate, &article, &stock, &ourPrice)
-		if err != nil {
-			return err
-		}
-
-		// Write the row data
-		f.SetCellValue(sheetName, getCellName(0, rowIndex), retrievedDate)
-		f.SetCellValue(sheetName, getCellName(1, rowIndex), article)
-		f.SetCellValue(sheetName, getCellName(2, rowIndex), stock)
+	for i, report := range reports {
+		rowIndex := i + 1 // Start after headers
 		
-		if ourPrice != nil {
-			f.SetCellValue(sheetName, getCellName(3, rowIndex), *ourPrice)
+		f.SetCellValue(sheetName, getCellName(0, rowIndex), report.RetrievedDate)
+		f.SetCellValue(sheetName, getCellName(1, rowIndex), report.Article)
+		f.SetCellValue(sheetName, getCellName(2, rowIndex), report.Stock)
+		
+		if report.OurPrice != nil {
+			f.SetCellValue(sheetName, getCellName(3, rowIndex), *report.OurPrice)
 		} else {
 			f.SetCellValue(sheetName, getCellName(3, rowIndex), "")
 		}
-		
-		rowIndex++
 	}
 
 	// Auto-adjust column widths
