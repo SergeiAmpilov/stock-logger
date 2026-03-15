@@ -4,18 +4,20 @@ import (
 	"fmt"
 	"log"
 	"stock-logger/internal/config"
+	handler_files "stock-logger/internal/filesxls/handler"
+	service_files "stock-logger/internal/filesxls/service"
 	"stock-logger/internal/mail"
 	"stock-logger/internal/ozon"
-	"stock-logger/internal/reports/handler"
+
+	reports_handler "stock-logger/internal/reports/handler"
 	"stock-logger/internal/reports/repository"
-	"stock-logger/internal/reports/service"
+	reports_service "stock-logger/internal/reports/service"
 	"stock-logger/internal/router"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/joho/godotenv"
-	"github.com/xuri/excelize/v2"
 )
 
 const (
@@ -52,15 +54,19 @@ func main() {
 	defer repo.Close()
 
 	// Initialize reports service and handler
-	reportsService := service.NewService(repo, ozonSP)
-	reportsHandler := handler.NewHandler(reportsService)
+	reportsService := reports_service.NewService(repo, ozonSP)
+	reportsHandler := reports_handler.NewHandler(reportsService)
+
+	// Initialize Excel files service and handler
+	excelService := service_files.NewService(repo)
+	excelHandler := handler_files.NewHandler(excelService)
 
 	// Initialize Fiber app
 	app := fiber.New()
 	app.Use(logger.New())
 
 	// Setup routes using the router package
-	router.SetupRoutes(app, reportsHandler)
+	router.SetupRoutes(app, reportsHandler, excelHandler)
 
 	// Run initial stock fetching and saving
 	reportsService.RunGetStocksAndSave(ozonSP)
@@ -91,15 +97,15 @@ func main() {
 			reportsService.RunGetStocksAndSave(ozonSP)
 		case <-hourlyReportTicker.C:
 			// Generate and send hourly report
-			runGenerateAndSendHourlyReport(repo, config)
+			runGenerateAndSendHourlyReport(excelService, config)
 		}
 	}
 }
 
 // Function to handle hourly report generation and email sending
-func runGenerateAndSendHourlyReport(repo *repository.DBRepository, appConfig *config.Config) {
+func runGenerateAndSendHourlyReport(excelService *service_files.Service, appConfig *config.Config) {
 	log.Println("Generating hourly Excel report...")
-	err := generateHourlyExcelReport(repo)
+	err := excelService.GenerateHourlyExcelReport()
 	if err != nil {
 		log.Printf("Error generating hourly Excel report: %v", err)
 	} else {
@@ -128,76 +134,4 @@ func runGenerateAndSendHourlyReport(repo *repository.DBRepository, appConfig *co
 		log.Printf("SMTP Server: %s, Username: %s, Recipients: %v",
 			emailConfig.SMTPServer, emailConfig.Username, emailConfig.Recipients)
 	}
-}
-
-// Generate Excel report with data from the last hour
-func generateHourlyExcelReport(repo *repository.DBRepository) error {
-	// Calculate the date one hour ago
-	oneHourAgo := time.Now().Add(-1 * time.Hour)
-
-	// Get reports for the last hour
-	reports, err := repo.GetReportsSince(oneHourAgo)
-	if err != nil {
-		return err
-	}
-
-	// Create Excel file
-	f := excelize.NewFile()
-	defer f.Close()
-
-	// Create a sheet for the report
-	sheetName := "Report"
-	index, _ := f.NewSheet(sheetName)
-	f.SetActiveSheet(index)
-
-	// Define headers
-	headers := []string{"Retrieved Date", "Article", "Stock", "Our Price"}
-
-	// Write headers
-	for i, header := range headers {
-		cellName := getCellName(i, 0)
-		f.SetCellValue(sheetName, cellName, header)
-	}
-
-	// Write data rows
-	for i, report := range reports {
-		rowIndex := i + 1 // Start after headers
-
-		f.SetCellValue(sheetName, getCellName(0, rowIndex), report.RetrievedDate)
-		f.SetCellValue(sheetName, getCellName(1, rowIndex), report.Article)
-		f.SetCellValue(sheetName, getCellName(2, rowIndex), report.Stock)
-
-		if report.OurPrice != nil {
-			f.SetCellValue(sheetName, getCellName(3, rowIndex), *report.OurPrice)
-		} else {
-			f.SetCellValue(sheetName, getCellName(3, rowIndex), "")
-		}
-	}
-
-	// Auto-adjust column widths
-	for col := 'A'; col <= 'D'; col++ {
-		f.SetColWidth(sheetName, string(col), string(col), 20)
-	}
-
-	// Save the Excel file
-	err = f.SaveAs(EXCEL_FILE_PATH)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// Helper function to convert column index to Excel column name (A, B, ..., Z, AA, AB, ...)
-func getCellName(colIndex, rowIndex int) string {
-	colName := ""
-	colNum := colIndex + 1
-
-	for colNum > 0 {
-		colNum--
-		colName = string(rune(colNum%26+'A')) + colName
-		colNum /= 26
-	}
-
-	return fmt.Sprintf("%s%d", colName, rowIndex+1)
 }
