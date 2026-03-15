@@ -25,28 +25,159 @@
 
     <div class="container mt-5">
         <h1>{{.Title}}</h1>
-        <p class="lead">Welcome to the Stock Logger Dashboard</p>
+        <p class="lead">Добро пожаловать в приложение парсинга цен и остатков OZON</p>
         
-        <div class="row">
-            <div class="col-md-6">
-                <div class="card">
-                    <div class="card-body">
-                        <h5 class="card-title">Reports</h5>
-                        <p class="card-text">View and manage your stock reports.</p>
-                        <a href="/reports" class="btn btn-primary">Go to Reports</a>
-                    </div>
-                </div>
+        <div class="row mb-3">
+            <div class="col-md-3">
+                <label for="limit-input">Лимит:</label>
+                <input type="number" id="limit-input" class="form-control" value="10" min="1">
             </div>
-            <div class="col-md-6">
-                <div class="card">
-                    <div class="card-body">
-                        <h5 class="card-title">API Data</h5>
-                        <p class="card-text">Access live stock and pricing data.</p>
-                        <a href="/api/stocks" class="btn btn-info">View Stocks</a>
-                    </div>
-                </div>
+            <div class="col-md-3">
+                <label for="offset-input">Отступ:</label>
+                <input type="number" id="offset-input" class="form-control" value="0" min="0">
+            </div>
+            <div class="col-md-6 d-flex align-items-end">
+                <button id="show-stocks-btn" class="btn btn-primary">Показать остатки</button>
             </div>
         </div>
+
+        <div class="table-responsive">
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>Артикул</th>
+                        <th>Дата</th>
+                        <th>Остаток</th>
+                        <th>Цена</th>
+                    </tr>
+                </thead>
+                <tbody id="stocks-table-body">
+                    <!-- Data will be loaded here -->
+                </tbody>
+            </table>
+        </div>
+
+        <nav aria-label="Page navigation">
+            <ul class="pagination" id="pagination-container">
+                <!-- Pagination links will be generated here -->
+            </ul>
+        </nav>
+
+
     </div>
+
+    
+<script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Initial load
+            loadStocks();
+            
+            document.getElementById('show-stocks-btn').addEventListener('click', function() {
+                loadStocks();
+            });
+        });
+
+        function loadStocks() {
+            const limit = document.getElementById('limit-input').value;
+            const offset = document.getElementById('offset-input').value;
+            
+            // Build URL with query parameters
+            const url = `/api/stocks?limit=${limit}&offset=${offset}`;
+            
+            fetch(url)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    updateTable(data.articles);
+                    updatePagination(data.page_info);
+                })
+                .catch(error => {
+                    console.error('Error fetching stocks:', error);
+                    document.getElementById('stocks-table-body').innerHTML = 
+                        `<tr><td colspan="4">Error loading data: ${error.message}</td></tr>`;
+                });
+        }
+
+        function updateTable(articles) {
+            const tbody = document.getElementById('stocks-table-body');
+            tbody.innerHTML = '';
+            
+            if (!articles || articles.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4">No data available</td></tr>';
+                return;
+            }
+            
+            articles.forEach(articleData => {
+                articleData.data.forEach(report => {
+                    const row = document.createElement('tr');
+                    
+                    // Format price to show "N/A" if null
+                    const priceDisplay = report.OurPrice !== null && report.OurPrice !== undefined 
+                        ? report.OurPrice.toFixed(2) 
+                        : 'N/A';
+                    
+                    row.innerHTML = `
+                        <td>${articleData.article}</td>
+                        <td>${new Date(report.RetrievedDate).toLocaleString()}</td>
+                        <td>${report.Stock}</td>
+                        <td>${priceDisplay}</td>
+                    `;
+                    
+                    tbody.appendChild(row);
+                });
+            });
+        }
+
+        function updatePagination(pageInfo) {
+            const paginationContainer = document.getElementById('pagination-container');
+            paginationContainer.innerHTML = '';
+            
+            if (!pageInfo || pageInfo.total_pages <= 1) {
+                return; // No pagination needed
+            }
+            
+            const currentPage = Math.floor(pageInfo.offset / pageInfo.limit) + 1;
+            const totalPages = pageInfo.total_pages;
+            
+            // Previous button
+            if (currentPage > 1) {
+                const prevLi = document.createElement('li');
+                prevLi.className = 'page-item';
+                prevLi.innerHTML = `<a class="page-link" href="#" onclick="changePage(${currentPage - 1})">Previous</a>`;
+                paginationContainer.appendChild(prevLi);
+            }
+            
+            // Page numbers
+            for (let i = 1; i <= totalPages; i++) {
+                const pageLi = document.createElement('li');
+                pageLi.className = `page-item ${i === currentPage ? 'active' : ''}`;
+                pageLi.innerHTML = `<a class="page-link" href="#" onclick="changePage(${i})">${i}</a>`;
+                paginationContainer.appendChild(pageLi);
+            }
+            
+            // Next button
+            if (currentPage < totalPages) {
+                const nextLi = document.createElement('li');
+                nextLi.className = 'page-item';
+                nextLi.innerHTML = `<a class="page-link" href="#" onclick="changePage(${currentPage + 1})">Next</a>`;
+                paginationContainer.appendChild(nextLi);
+            }
+        }
+
+        function changePage(pageNumber) {
+            const limit = parseInt(document.getElementById('limit-input').value);
+            const offset = (pageNumber - 1) * limit;
+            
+            document.getElementById('offset-input').value = offset;
+            
+            loadStocks();
+        }
+    </script>
+
+    
 </body>
 </html>
