@@ -2,4 +2,5 @@
 .env
 stocks.db
 *.xls
+file-reports
 *.xlsx

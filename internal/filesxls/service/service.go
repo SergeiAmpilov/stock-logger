@@ -3,15 +3,15 @@ package service
 import (
 	"fmt"
 	"log"
-	"time"
+	"os"
+	"path/filepath"
 	"stock-logger/internal/config"
 	"stock-logger/internal/mail"
 	"stock-logger/internal/reports/repository"
+	"time"
 
 	"github.com/xuri/excelize/v2"
 )
-
-const EXCEL_FILE_PATH = "./report.xlsx"
 
 // Service handles Excel file operations
 type Service struct {
@@ -26,15 +26,26 @@ func NewService(repo *repository.DBRepository) *Service {
 }
 
 // GenerateHourlyExcelReport generates an Excel report with data from the last hour
-func (s *Service) GenerateHourlyExcelReport() error {
+func (s *Service) GenerateHourlyExcelReport() (string, error) {
 	// Calculate the date one hour ago
 	oneHourAgo := time.Now().Add(-1 * time.Hour)
 
 	// Get reports for the last hour
 	reports, err := s.repo.GetReportsSince(oneHourAgo)
 	if err != nil {
-		return err
+		return "", err
 	}
+
+	// Create the reports directory if it doesn't exist
+	reportsDir := "./file-reports"
+	if err := os.MkdirAll(reportsDir, os.ModePerm); err != nil {
+		return "", fmt.Errorf("failed to create reports directory: %v", err)
+	}
+
+	// Generate filename with current timestamp
+	timestamp := time.Now().Format("20060102150405")
+	filename := fmt.Sprintf("%s.xlsx", timestamp)
+	filepath := filepath.Join(reportsDir, filename)
 
 	// Create Excel file
 	f := excelize.NewFile()
@@ -75,23 +86,23 @@ func (s *Service) GenerateHourlyExcelReport() error {
 	}
 
 	// Save the Excel file
-	err = f.SaveAs(EXCEL_FILE_PATH)
+	err = f.SaveAs(filepath)
 	if err != nil {
-		return err
+		return "", err
 	}
 
-	return nil
+	return filepath, nil
 }
 
 // GenerateAndSendHourlyReport generates an Excel report and sends it via email
 func (s *Service) GenerateAndSendHourlyReport(appConfig *config.Config) error {
 	log.Println("Generating hourly Excel report...")
-	err := s.GenerateHourlyExcelReport()
+	filePath, err := s.GenerateHourlyExcelReport()
 	if err != nil {
 		log.Printf("Error generating hourly Excel report: %v", err)
 		return err
 	} else {
-		log.Println("Hourly Excel report generated successfully")
+		log.Printf("Hourly Excel report generated successfully at: %s", filePath)
 	}
 
 	// Send email with the report
@@ -105,7 +116,7 @@ func (s *Service) GenerateAndSendHourlyReport(appConfig *config.Config) error {
 
 	if emailConfig.Username != "" && emailConfig.Password != "" && len(emailConfig.Recipients) > 0 {
 		log.Printf("Attempting to send email to: %v", emailConfig.Recipients)
-		err = mail.SendReportEmail(emailConfig, EXCEL_FILE_PATH)
+		err = mail.SendReportEmail(emailConfig, filePath)
 		if err != nil {
 			log.Printf("Error sending email: %v", err)
 			return err

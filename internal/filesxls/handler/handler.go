@@ -23,7 +23,7 @@ func NewHandler(service *service.Service) *Handler {
 func (h *Handler) GenerateReport(c *fiber.Ctx) error {
 	log.Println("Handling request to generate Excel report")
 
-	err := h.service.GenerateHourlyExcelReport()
+	filePath, err := h.service.GenerateHourlyExcelReport()
 	if err != nil {
 		log.Printf("Error generating Excel report: %v", err)
 		return c.Status(500).JSON(fiber.Map{
@@ -33,5 +33,6 @@ func (h *Handler) GenerateReport(c *fiber.Ctx) error {
 
 	return c.JSON(fiber.Map{
 		"message": "Excel report generated successfully",
+		"filePath": filePath,
 	})
 }
