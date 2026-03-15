@@ -12,7 +12,7 @@ func SetupRoutes(app *fiber.App, reportsHandler *reports_handler.Handler, excelH
 	// Add routes
 	app.Get("/", func(c *fiber.Ctx) error {
 		return c.Render("index", fiber.Map{
-			"Title": "Stock Logger Dashboard",
+			"Title": "Stock Logger",
 		}) // Render HTML template instead of sending plain text
 	})
 

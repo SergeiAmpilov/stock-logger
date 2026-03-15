@@ -30,7 +30,7 @@
         <div class="row mb-3">
             <div class="col-md-3">
                 <label for="limit-input">Лимит:</label>
-                <input type="number" id="limit-input" class="form-control" value="10" min="1">
+                <input type="number" id="limit-input" class="form-control" value="100" min="1">
             </div>
             <div class="col-md-3">
                 <label for="offset-input">Отступ:</label>
@@ -43,12 +43,10 @@
 
         <div class="table-responsive">
             <table class="table table-striped">
-                <thead>
+                <thead id="stocks-table-head">
                     <tr>
                         <th>Артикул</th>
-                        <th>Дата</th>
-                        <th>Остаток</th>
-                        <th>Цена</th>
+                        <!-- Dates will be added dynamically -->
                     </tr>
                 </thead>
                 <tbody id="stocks-table-body">
@@ -103,33 +101,87 @@
         }
 
         function updateTable(articles) {
-            const tbody = document.getElementById('stocks-table-body');
-            tbody.innerHTML = '';
+            const tableHead = document.getElementById('stocks-table-head');
+            const tableBody = document.getElementById('stocks-table-body');
+            
+            // Clear previous content
+            tableHead.innerHTML = '<tr><th>Артикул</th></tr>';
+            tableBody.innerHTML = '';
             
             if (!articles || articles.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="4">No data available</td></tr>';
+                tableBody.innerHTML = '<tr><td colspan="4">No data available</td></tr>';
                 return;
             }
             
+            // Collect all unique dates across all articles
+            const allDates = new Set();
             articles.forEach(articleData => {
                 articleData.data.forEach(report => {
-                    const row = document.createElement('tr');
-                    
-                    // Format price to show "N/A" if null
-                    const priceDisplay = report.OurPrice !== null && report.OurPrice !== undefined 
-                        ? report.OurPrice.toFixed(2) 
-                        : 'N/A';
-                    
-                    row.innerHTML = `
-                        <td>${articleData.article}</td>
-                        <td>${new Date(report.RetrievedDate).toLocaleString()}</td>
-                        <td>${report.Stock}</td>
-                        <td>${priceDisplay}</td>
-                    `;
-                    
-                    tbody.appendChild(row);
+                    const dateKey = formatDateKey(new Date(report.RetrievedDate));
+                    allDates.add(dateKey);
                 });
             });
+            
+            // Sort dates in descending order (most recent first)
+            const sortedDates = Array.from(allDates).sort((a, b) => new Date(b) - new Date(a));
+            
+            // Create header row with date columns
+            const headerRow = tableHead.querySelector('tr');
+            sortedDates.forEach(date => {
+                const th = document.createElement('th');
+                th.colSpan = 2; // Each date gets 2 columns: stock and price
+                th.textContent = new Date(date).toLocaleString();
+                th.style.textAlign = 'center';
+                headerRow.appendChild(th);
+            });
+            
+            // Create data rows
+            articles.forEach(articleData => {
+                const row = document.createElement('tr');
+                
+                // Add article cell
+                const articleCell = document.createElement('td');
+                articleCell.textContent = articleData.article;
+                row.appendChild(articleCell);
+                
+                // Create cells for each date
+                sortedDates.forEach(date => {
+                    const dateReports = articleData.data.filter(report => 
+                        formatDateKey(new Date(report.RetrievedDate)) === date
+                    );
+                    
+                    // Find the most recent report for this date
+                    let stockCell = document.createElement('td');
+                    let priceCell = document.createElement('td');
+                    
+                    if (dateReports.length > 0) {
+                        // Use the most recent report for the date
+                        const latestReport = dateReports.reduce((latest, current) => 
+                            new Date(current.RetrievedDate) > new Date(latest.RetrievedDate) ? current : latest
+                        );
+                        
+                        stockCell.textContent = latestReport.Stock;
+                        priceCell.textContent = latestReport.OurPrice !== null && latestReport.OurPrice !== undefined 
+                            ? latestReport.OurPrice.toFixed(2) 
+                            : 'N/A';
+                    } else {
+                        stockCell.textContent = '-';
+                        priceCell.textContent = '-';
+                    }
+                    
+                    row.appendChild(stockCell);
+                    row.appendChild(priceCell);
+                });
+                
+                tableBody.appendChild(row);
+            });
+        }
+
+        // Helper function to format date as YYYY-MM-DD for grouping
+        function formatDateKey(date) {
+            return date.getFullYear() + '-' + 
+                   String(date.getMonth() + 1).padStart(2, '0') + '-' + 
+                   String(date.getDate()).padStart(2, '0');
         }
 
         function updatePagination(pageInfo) {
@@ -147,23 +199,21 @@
             if (currentPage > 1) {
                 const prevLi = document.createElement('li');
                 prevLi.className = 'page-item';
-                prevLi.innerHTML = `<a class="page-link" href="#" onclick="changePage(${currentPage - 1})">Previous</a>`;
+                prevLi.innerHTML = `<a class="page-link" href="#" onclick="changePage(${currentPage - 1})">Предыдущая</a>`;
                 paginationContainer.appendChild(prevLi);
             }
             
-            // Page numbers
-            for (let i = 1; i <= totalPages; i++) {
-                const pageLi = document.createElement('li');
-                pageLi.className = `page-item ${i === currentPage ? 'active' : ''}`;
-                pageLi.innerHTML = `<a class="page-link" href="#" onclick="changePage(${i})">${i}</a>`;
-                paginationContainer.appendChild(pageLi);
-            }
+            // Current page indicator with total pages
+            const currentLi = document.createElement('li');
+            currentLi.className = 'page-item active';
+            currentLi.innerHTML = `<span class="page-link">Страница ${currentPage} (${totalPages})</span>`;
+            paginationContainer.appendChild(currentLi);
             
             // Next button
             if (currentPage < totalPages) {
                 const nextLi = document.createElement('li');
                 nextLi.className = 'page-item';
-                nextLi.innerHTML = `<a class="page-link" href="#" onclick="changePage(${currentPage + 1})">Next</a>`;
+                nextLi.innerHTML = `<a class="page-link" href="#" onclick="changePage(${currentPage + 1})">Следующая</a>`;
                 paginationContainer.appendChild(nextLi);
             }
         }
