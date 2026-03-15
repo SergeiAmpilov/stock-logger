@@ -9,7 +9,7 @@
 </head>
 <body>
     <div class="container mt-5">
-        <h1>{{.Title}}</h1>
+        <h1 class="my-4">{{.Title}}</h1>
         
         <div class="row">
             <div class="col-md-12">
@@ -49,17 +49,17 @@
                     }
                     
                     files.forEach(function(file) {
+                        console.log(file);
                         const row = document.createElement('tr');
                         
-                        // Extract just the filename from the path for display - handle both forward and backward slashes
-                        // Check if file_path exists before processing
-                        const fileName = file.file_path ? file.file_path.replace(/\\/g, '/').split('/').pop() : 'N/A';
+                        // Construct the full file path using hardcoded directory
+                        const fullPath = '/file-reports/' + file.FilePath;
                         
                         row.innerHTML = `
-                            <td>${file.id}</td>
-                            <td>${new Date(file.created_at).toLocaleString()}</td>
-                            <td>${fileName}</td>
-                            <td><a href="${file.file_path || '#'}" class="btn btn-primary btn-sm" download>Download</a></td>
+                            <td>${file.ID}</td>
+                            <td>${new Date(file.CreatedAt).toLocaleString()}</td>
+                            <td>${file.FilePath}</td>
+                            <td><a href="${fullPath}" class="btn btn-primary btn-sm" download>Download</a></td>
                         `;
                         
                         filesList.appendChild(row);

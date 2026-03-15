@@ -94,8 +94,8 @@ func (s *Service) GenerateHourlyExcelReport() (string, error) {
 		return "", err
 	}
 
-	// Save file record to database
-	err = s.filesXLSRepo.SaveFileRecord(filepath)
+	// Save file record to database - store only the filename
+	err = s.filesXLSRepo.SaveFileRecord(filename)
 	if err != nil {
 		log.Printf("Warning: Failed to save file record to database: %v", err)
 		// We don't return an error here because the file was successfully created
