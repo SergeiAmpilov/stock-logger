@@ -5,7 +5,9 @@ import (
 	"log"
 	"stock-logger/internal/config"
 	handler_files "stock-logger/internal/filesxls/handler"
+	filesrepo "stock-logger/internal/filesxls/repository"
 	service_files "stock-logger/internal/filesxls/service"
+
 	"stock-logger/internal/ozon"
 
 	reports_handler "stock-logger/internal/reports/handler"
@@ -52,12 +54,19 @@ func main() {
 	}
 	defer repo.Close()
 
+	// Initialize filesxls database repository
+	filesXLSRepo, err := filesrepo.NewDBRepository(DB_PATH)
+	if err != nil {
+		log.Fatal("Failed to initialize filesxls database repository:", err)
+	}
+	defer filesXLSRepo.Close()
+
 	// Initialize reports service and handler
 	reportsService := reports_service.NewService(repo, ozonSP)
 	reportsHandler := reports_handler.NewHandler(reportsService)
 
 	// Initialize Excel files service and handler
-	excelService := service_files.NewService(repo)
+	excelService := service_files.NewService(repo, filesXLSRepo)
 	excelHandler := handler_files.NewHandler(excelService)
 
 	// Initialize Fiber app

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"stock-logger/internal/config"
+	filesrepo "stock-logger/internal/filesxls/repository"
 	"stock-logger/internal/mail"
 	"stock-logger/internal/reports/repository"
 	"time"
@@ -15,13 +16,15 @@ import (
 
 // Service handles Excel file operations
 type Service struct {
-	repo *repository.DBRepository
+	repo         *repository.DBRepository
+	filesXLSRepo *filesrepo.DBRepository
 }
 
 // NewService creates a new Excel files service
-func NewService(repo *repository.DBRepository) *Service {
+func NewService(repo *repository.DBRepository, filesXLSRepo *filesrepo.DBRepository) *Service {
 	return &Service{
-		repo: repo,
+		repo:         repo,
+		filesXLSRepo: filesXLSRepo,
 	}
 }
 
@@ -89,6 +92,13 @@ func (s *Service) GenerateHourlyExcelReport() (string, error) {
 	err = f.SaveAs(filepath)
 	if err != nil {
 		return "", err
+	}
+
+	// Save file record to database
+	err = s.filesXLSRepo.SaveFileRecord(filepath)
+	if err != nil {
+		log.Printf("Warning: Failed to save file record to database: %v", err)
+		// We don't return an error here because the file was successfully created
 	}
 
 	return filepath, nil
