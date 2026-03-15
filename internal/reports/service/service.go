@@ -30,9 +30,9 @@ func (s *Service) GetAllReports() ([]repository.Report, error) {
 }
 
 // RunGetStocksAndSave fetches stock and price data and saves to the database
-func (s *Service) RunGetStocksAndSave(ozonSP *ozon.Service) {
+func (s *Service) RunGetStocksAndSave() {
 	log.Println("Fetching stock data...")
-	stockResponse := ozonSP.GetStocks(DEFAULT_PAGE_SIZE)
+	stockResponse := s.ozonSP.GetStocks(DEFAULT_PAGE_SIZE)
 	if stockResponse != nil {
 		log.Printf("Successfully fetched stock data. Total items: %d", stockResponse.Total)
 	} else {
@@ -41,7 +41,7 @@ func (s *Service) RunGetStocksAndSave(ozonSP *ozon.Service) {
 	}
 
 	log.Println("Fetching price data...")
-	priceResponse := ozonSP.GetAllPrices(DEFAULT_PAGE_SIZE)
+	priceResponse := s.ozonSP.GetAllPrices(DEFAULT_PAGE_SIZE)
 	if priceResponse != nil {
 		log.Printf("Successfully fetched price data. Total items: %d", priceResponse.Total)
 	} else {

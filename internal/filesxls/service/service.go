@@ -2,8 +2,11 @@ package service
 
 import (
 	"fmt"
-	"stock-logger/internal/reports/repository"
+	"log"
 	"time"
+	"stock-logger/internal/config"
+	"stock-logger/internal/mail"
+	"stock-logger/internal/reports/repository"
 
 	"github.com/xuri/excelize/v2"
 )
@@ -75,6 +78,44 @@ func (s *Service) GenerateHourlyExcelReport() error {
 	err = f.SaveAs(EXCEL_FILE_PATH)
 	if err != nil {
 		return err
+	}
+
+	return nil
+}
+
+// GenerateAndSendHourlyReport generates an Excel report and sends it via email
+func (s *Service) GenerateAndSendHourlyReport(appConfig *config.Config) error {
+	log.Println("Generating hourly Excel report...")
+	err := s.GenerateHourlyExcelReport()
+	if err != nil {
+		log.Printf("Error generating hourly Excel report: %v", err)
+		return err
+	} else {
+		log.Println("Hourly Excel report generated successfully")
+	}
+
+	// Send email with the report
+	emailConfig := mail.EmailConfig{
+		SMTPServer: appConfig.SMTPServer,
+		SMTPPort:   appConfig.SMTPPort,
+		Username:   appConfig.EmailUsername,
+		Password:   appConfig.EmailPassword,
+		Recipients: appConfig.EmailRecipients,
+	}
+
+	if emailConfig.Username != "" && emailConfig.Password != "" && len(emailConfig.Recipients) > 0 {
+		log.Printf("Attempting to send email to: %v", emailConfig.Recipients)
+		err = mail.SendReportEmail(emailConfig, EXCEL_FILE_PATH)
+		if err != nil {
+			log.Printf("Error sending email: %v", err)
+			return err
+		} else {
+			log.Println("Email sent successfully")
+		}
+	} else {
+		log.Println("Email configuration incomplete, skipping email sending")
+		log.Printf("SMTP Server: %s, Username: %s, Recipients: %v",
+			emailConfig.SMTPServer, emailConfig.Username, emailConfig.Recipients)
 	}
 
 	return nil

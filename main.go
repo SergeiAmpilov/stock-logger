@@ -6,7 +6,6 @@ import (
 	"stock-logger/internal/config"
 	handler_files "stock-logger/internal/filesxls/handler"
 	service_files "stock-logger/internal/filesxls/service"
-	"stock-logger/internal/mail"
 	"stock-logger/internal/ozon"
 
 	reports_handler "stock-logger/internal/reports/handler"
@@ -69,7 +68,7 @@ func main() {
 	router.SetupRoutes(app, reportsHandler, excelHandler)
 
 	// Run initial stock fetching and saving
-	reportsService.RunGetStocksAndSave(ozonSP)
+	reportsService.RunGetStocksAndSave()
 
 	// Ticker for API polling every 5 minutes
 	apiTicker := time.NewTicker(RESTART_INTERVAL)
@@ -94,44 +93,9 @@ func main() {
 	for {
 		select {
 		case <-apiTicker.C:
-			reportsService.RunGetStocksAndSave(ozonSP)
+			reportsService.RunGetStocksAndSave()
 		case <-hourlyReportTicker.C:
-			// Generate and send hourly report
-			runGenerateAndSendHourlyReport(excelService, config)
+			excelService.GenerateAndSendHourlyReport(config)
 		}
-	}
-}
-
-// Function to handle hourly report generation and email sending
-func runGenerateAndSendHourlyReport(excelService *service_files.Service, appConfig *config.Config) {
-	log.Println("Generating hourly Excel report...")
-	err := excelService.GenerateHourlyExcelReport()
-	if err != nil {
-		log.Printf("Error generating hourly Excel report: %v", err)
-	} else {
-		log.Println("Hourly Excel report generated successfully")
-	}
-
-	// Send email with the report
-	emailConfig := mail.EmailConfig{
-		SMTPServer: appConfig.SMTPServer,
-		SMTPPort:   appConfig.SMTPPort,
-		Username:   appConfig.EmailUsername,
-		Password:   appConfig.EmailPassword,
-		Recipients: appConfig.EmailRecipients,
-	}
-
-	if emailConfig.Username != "" && emailConfig.Password != "" && len(emailConfig.Recipients) > 0 {
-		log.Printf("Attempting to send email to: %v", emailConfig.Recipients)
-		err = mail.SendReportEmail(emailConfig, EXCEL_FILE_PATH)
-		if err != nil {
-			log.Printf("Error sending email: %v", err)
-		} else {
-			log.Println("Email sent successfully")
-		}
-	} else {
-		log.Println("Email configuration incomplete, skipping email sending")
-		log.Printf("SMTP Server: %s, Username: %s, Recipients: %v",
-			emailConfig.SMTPServer, emailConfig.Username, emailConfig.Recipients)
 	}
 }
