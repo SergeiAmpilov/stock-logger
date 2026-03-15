@@ -9,6 +9,7 @@ import (
 	"stock-logger/internal/reports/handler"
 	"stock-logger/internal/reports/repository"
 	"stock-logger/internal/reports/service"
+	"stock-logger/internal/router"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -58,12 +59,8 @@ func main() {
 	app := fiber.New()
 	app.Use(logger.New())
 
-	// Add routes
-	app.Get("/", func(c *fiber.Ctx) error {
-		return c.SendString("Stock Logger API is running!")
-	})
-
-	app.Get("/api/stocks", reportsHandler.GetReports)
+	// Setup routes using the router package
+	router.SetupRoutes(app, reportsHandler)
 
 	// Run initial stock fetching and saving
 	runGetStocksAndSave(repo, ozonSP, config)
