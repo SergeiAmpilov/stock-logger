@@ -59,12 +59,18 @@
             button.disabled = true;
             button.textContent = 'Генерация...';
             
-            // Make POST request to generate new report
+            // Add token to headers if it exists
+            const token = localStorage.getItem('token');
+            const headers = {
+                'Content-Type': 'application/json'
+            };
+            if (token) {
+                headers['Authorization'] = `Bearer ${token}`;
+            }
+            
             fetch('/api/excel/generate', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                }
+                headers: headers
             })
             .then(response => {
                 if (!response.ok) {
@@ -86,8 +92,19 @@
         }
 
         document.addEventListener('DOMContentLoaded', function() {
+            const token = localStorage.getItem('token');
+            const headers = {
+                'Content-Type': 'application/json'
+            };
+            if (token) {
+                headers['Authorization'] = `Bearer ${token}`;
+            }
+
             // Fetch the list of Excel files using fetch API instead of jQuery
-            fetch('/api/excel/list')
+            fetch('/api/excel/list', {
+                method: 'GET',
+                headers: headers
+            })
                 .then(response => {
                     if (!response.ok) {
                         throw new Error('Network response was not ok');
