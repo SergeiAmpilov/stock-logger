@@ -90,6 +90,12 @@
             const loginBtn = document.getElementById('login-btn');
             const passwordInput = document.getElementById('password-input');
 
+            // Check if token exists on page load and load stocks if it does
+            const token = localStorage.getItem('token');
+            if (token) {
+                loadStocks();
+            }
+
             // Show popup when auth button is clicked
             authButton.addEventListener('click', function(e) {
                 e.preventDefault();
@@ -141,6 +147,8 @@
                         console.log('Token stored successfully');
                         // Close popup after successful login
                         authPopup.style.display = 'none';
+                        // Reload the page after successful login
+                        window.location.reload();
                     } else {
                         alert('Неверный формат ответа от сервера');
                     }
@@ -151,9 +159,6 @@
                 });
             });
 
-            // Initial load
-            loadStocks();
-            
             document.getElementById('show-stocks-btn').addEventListener('click', function() {
                 loadStocks();
             });
@@ -171,6 +176,7 @@
             
             const limit = document.getElementById('limit-input').value;
             const offset = document.getElementById('offset-input').value;
+
             
             // Build URL with query parameters
             const url = `/api/stocks?limit=${limit}&offset=${offset}`;
