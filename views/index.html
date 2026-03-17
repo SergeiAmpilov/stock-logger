@@ -79,9 +79,18 @@
             background: none;
             cursor: pointer;
         }
+
+        /* Стили для красной кнопки выхода */
+        #auth-button.logout {
+            color: #dc3545 !important;
+            font-weight: 500;
+        }
+        #auth-button.logout:hover {
+            color: #a71d2a !important;
+        }
     </style>
 
-        <div class="container mt-5">
+    <div class="container mt-5">
         <h1>{{.Title}}</h1>
         <p class="lead">Добро пожаловать в приложение парсинга цен и остатков OZON</p>
         
@@ -118,8 +127,6 @@
                 <!-- Pagination links will be generated here -->
             </ul>
         </nav>
-
-
     </div>
 
     <script>
@@ -131,18 +138,47 @@
             const loginBtn = document.getElementById('login-btn');
             const passwordInput = document.getElementById('password-input');
 
-            // Check if token exists on page load and load stocks if it does
-            const token = localStorage.getItem('token');
-            if (token) {
-                loadStocks();
+            // Функция обновления кнопки авторизации в зависимости от наличия токена
+            function updateAuthButton() {
+                const token = localStorage.getItem('token');
+                if (token) {
+                    authButton.textContent = 'Выйти';
+                    authButton.classList.add('logout');
+                } else {
+                    authButton.textContent = 'Авторизоваться';
+                    authButton.classList.remove('logout');
+                }
             }
 
-            // Show popup when auth button is clicked
+            // Функция выхода из системы
+            function logout() {
+                localStorage.removeItem('token');
+                updateAuthButton();
+                window.location.reload();
+            }
+
+            // Обработчик клика по кнопке авторизации/выхода
             authButton.addEventListener('click', function(e) {
                 e.preventDefault();
-                authPopup.style.display = 'block';
-                passwordInput.value = ''; // Clear any previous input
+                const token = localStorage.getItem('token');
+                
+                if (token) {
+                    // Если есть токен — выполняем выход
+                    logout();
+                } else {
+                    // Если нет токена — показываем попап авторизации
+                    authPopup.style.display = 'block';
+                    passwordInput.value = '';
+                }
             });
+
+            // Проверка токена и обновление UI при загрузке страницы
+            updateAuthButton();
+            
+            // Если токен есть — загружаем данные
+            if (localStorage.getItem('token')) {
+                loadStocks();
+            }
 
             // Close popup when close button is clicked
             closeAuth.addEventListener('click', function() {
@@ -188,7 +224,8 @@
                         console.log('Token stored successfully');
                         // Close popup after successful login
                         authPopup.style.display = 'none';
-                        // Reload the page after successful login
+                        // Update button and reload
+                        updateAuthButton();
                         window.location.reload();
                     } else {
                         alert('Неверный формат ответа от сервера');
@@ -218,7 +255,6 @@
             const limit = document.getElementById('limit-input').value;
             const offset = document.getElementById('offset-input').value;
 
-            
             // Build URL with query parameters
             const url = `/api/stocks?limit=${limit}&offset=${offset}`;
             
@@ -274,7 +310,7 @@
             const headerRow = tableHead.querySelector('tr');
             sortedDates.forEach(date => {
                 const th = document.createElement('th');
-                th.colSpan = 2; // Each date gets 2 columns: stock and price
+                th.colSpan = 2;
                 th.textContent = new Date(date).toLocaleString();
                 th.style.textAlign = 'center';
                 headerRow.appendChild(th);
@@ -295,12 +331,10 @@
                         formatDateKey(new Date(report.RetrievedDate)) === date
                     );
                     
-                    // Find the most recent report for this date
                     let stockCell = document.createElement('td');
                     let priceCell = document.createElement('td');
                     
                     if (dateReports.length > 0) {
-                        // Use the most recent report for the date
                         const latestReport = dateReports.reduce((latest, current) => 
                             new Date(current.RetrievedDate) > new Date(latest.RetrievedDate) ? current : latest
                         );
@@ -334,7 +368,7 @@
             paginationContainer.innerHTML = '';
             
             if (!pageInfo || pageInfo.total_pages <= 1) {
-                return; // No pagination needed
+                return;
             }
             
             const currentPage = Math.floor(pageInfo.offset / pageInfo.limit) + 1;
@@ -372,7 +406,5 @@
             loadStocks();
         }
     </script>
-
-    
 </body>
 </html>
