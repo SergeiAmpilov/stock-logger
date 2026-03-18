@@ -5,10 +5,12 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
 	"stock-logger/internal/config"
 	filesrepo "stock-logger/internal/filesxls/repository"
 	"stock-logger/internal/mail"
 	"stock-logger/internal/reports/repository"
+	"strings"
 	"time"
 
 	"github.com/xuri/excelize/v2"
@@ -30,14 +32,39 @@ func NewService(repo *repository.DBRepository, filesXLSRepo *filesrepo.DBReposit
 
 // GenerateHourlyExcelReport generates an Excel report with data from the last hour
 func (s *Service) GenerateHourlyExcelReport() (string, error) {
-	// Calculate the date one hour ago
-	oneHourAgo := time.Now().Add(-1 * time.Hour)
+	// Calculate the date 24 hours ago
+	twentyFourHoursAgo := time.Now().Add(-24 * time.Hour)
 
-	// Get reports for the last hour
-	reports, err := s.repo.GetReportsSince(oneHourAgo)
+	// Get reports for the last 24 hours
+	reports, err := s.repo.GetReportsSince(twentyFourHoursAgo)
 	if err != nil {
 		return "", err
 	}
+
+	// Group reports by article
+	articleMap := make(map[string][]repository.Report)
+	for _, report := range reports {
+		articleMap[report.Article] = append(articleMap[report.Article], report)
+	}
+
+	// Extract unique dates and sort them in descending order
+	dateSet := make(map[string]bool)
+	for _, reportList := range articleMap {
+		for _, report := range reportList {
+			// Use only the date part for grouping
+			datePart := strings.Split(report.RetrievedDate, "T")[0]
+			dateSet[datePart] = true
+		}
+	}
+
+	// Convert set to slice and sort in descending order
+	dates := make([]string, 0, len(dateSet))
+	for date := range dateSet {
+		dates = append(dates, date)
+	}
+	sort.Slice(dates, func(i, j int) bool {
+		return dates[i] > dates[j] // Descending order
+	})
 
 	// Create the reports directory if it doesn't exist
 	reportsDir := "./file-reports"
@@ -59,8 +86,12 @@ func (s *Service) GenerateHourlyExcelReport() (string, error) {
 	index, _ := f.NewSheet(sheetName)
 	f.SetActiveSheet(index)
 
-	// Define headers
-	headers := []string{"Retrieved Date", "Article", "Stock", "Our Price"}
+	// Build headers: Article column + date columns with stock and price sub-columns
+	headers := []string{"Article"}
+	for _, date := range dates {
+		headers = append(headers, fmt.Sprintf("Stock (%s)", date))
+		headers = append(headers, fmt.Sprintf("Price (%s)", date))
+	}
 
 	// Write headers
 	for i, header := range headers {
@@ -69,23 +100,53 @@ func (s *Service) GenerateHourlyExcelReport() (string, error) {
 	}
 
 	// Write data rows
-	for i, report := range reports {
-		rowIndex := i + 1 // Start after headers
-
-		f.SetCellValue(sheetName, getCellName(0, rowIndex), report.RetrievedDate)
-		f.SetCellValue(sheetName, getCellName(1, rowIndex), report.Article)
-		f.SetCellValue(sheetName, getCellName(2, rowIndex), report.Stock)
-
-		if report.OurPrice != nil {
-			f.SetCellValue(sheetName, getCellName(3, rowIndex), *report.OurPrice)
-		} else {
-			f.SetCellValue(sheetName, getCellName(3, rowIndex), "")
+	rowIndex := 1 // Start after headers
+	for article, reportList := range articleMap {
+		// Create a map of date -> (stock, price) for this article
+		dateDataMap := make(map[string][2]interface{}) // [0] = stock, [1] = price
+		for _, report := range reportList {
+			datePart := strings.Split(report.RetrievedDate, "T")[0] // Extract date part
+			stock := report.Stock
+			var price interface{}
+			if report.OurPrice != nil {
+				price = *report.OurPrice
+			} else {
+				price = ""
+			}
+			dateDataMap[datePart] = [2]interface{}{stock, price}
 		}
+
+		// Fill the row for this article
+		colIndex := 0
+		f.SetCellValue(sheetName, getCellName(colIndex, rowIndex), article)
+		colIndex++
+
+		// For each date, fill stock and price
+		for _, date := range dates {
+			data, exists := dateDataMap[date]
+			if exists {
+				// Add stock value
+				f.SetCellValue(sheetName, getCellName(colIndex, rowIndex), data[0])
+				colIndex++
+				// Add price value
+				f.SetCellValue(sheetName, getCellName(colIndex, rowIndex), data[1])
+				colIndex++
+			} else {
+				// Add empty values if no data for this date
+				f.SetCellValue(sheetName, getCellName(colIndex, rowIndex), "")
+				colIndex++
+				f.SetCellValue(sheetName, getCellName(colIndex, rowIndex), "")
+				colIndex++
+			}
+		}
+
+		rowIndex++
 	}
 
 	// Auto-adjust column widths
-	for col := 'A'; col <= 'D'; col++ {
-		f.SetColWidth(sheetName, string(col), string(col), 20)
+	for colIdx := 0; colIdx < len(headers); colIdx++ {
+		colName := getCellName(colIdx, 0)[:1] // Get just the letter part
+		f.SetColWidth(sheetName, colName, colName, 20)
 	}
 
 	// Save the Excel file
