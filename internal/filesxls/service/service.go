@@ -10,7 +10,6 @@ import (
 	filesrepo "stock-logger/internal/filesxls/repository"
 	"stock-logger/internal/mail"
 	"stock-logger/internal/reports/repository"
-	"strings"
 	"time"
 
 	"github.com/xuri/excelize/v2"
@@ -51,9 +50,14 @@ func (s *Service) GenerateHourlyExcelReport() (string, error) {
 	dateSet := make(map[string]bool)
 	for _, reportList := range articleMap {
 		for _, report := range reportList {
-			// Use only the date part for grouping
-			datePart := strings.Split(report.RetrievedDate, "T")[0]
-			dateSet[datePart] = true
+			// Parse the full datetime string and format it to include date-hour-minute
+			parsedTime, err := time.Parse(time.RFC3339, report.RetrievedDate)
+			if err != nil {
+				continue // Skip invalid time formats
+			}
+			// Format to YYYY-MM-DD-HH-MM as per specification
+			timePart := parsedTime.Format("2006-01-02-15-04")
+			dateSet[timePart] = true
 		}
 	}
 
@@ -105,7 +109,13 @@ func (s *Service) GenerateHourlyExcelReport() (string, error) {
 		// Create a map of date -> (stock, price) for this article
 		dateDataMap := make(map[string][2]interface{}) // [0] = stock, [1] = price
 		for _, report := range reportList {
-			datePart := strings.Split(report.RetrievedDate, "T")[0] // Extract date part
+			// Parse the full datetime string and format it to include date-hour-minute
+			parsedTime, err := time.Parse(time.RFC3339, report.RetrievedDate)
+			if err != nil {
+				continue // Skip invalid time formats
+			}
+			// Format to YYYY-MM-DD-HH-MM as per specification
+			timePart := parsedTime.Format("2006-01-02-15-04")
 			stock := report.Stock
 			var price interface{}
 			if report.OurPrice != nil {
@@ -113,7 +123,7 @@ func (s *Service) GenerateHourlyExcelReport() (string, error) {
 			} else {
 				price = ""
 			}
-			dateDataMap[datePart] = [2]interface{}{stock, price}
+			dateDataMap[timePart] = [2]interface{}{stock, price}
 		}
 
 		// Fill the row for this article
