@@ -196,6 +196,10 @@ func (s *Service) TelegramEnabled() bool {
 	return s.notifier != nil && s.notifier.Enabled()
 }
 
+// maxTelegramFileSize ограничивает отправляемый файл: Bot API принимает документы до 50 МБ,
+// поэтому 45 МБ оставляют запас на заголовки multipart
+const maxTelegramFileSize = 45 << 20
+
 // SendToTelegram publishes the generated report to the configured Telegram group.
 // Errors are returned to the caller for reporting; a delivery failure never stops the pipeline.
 func (s *Service) SendToTelegram(ctx context.Context, filePath string) error {
@@ -204,17 +208,27 @@ func (s *Service) SendToTelegram(ctx context.Context, filePath string) error {
 		return nil
 	}
 
+	info, err := os.Stat(filePath)
+	if err != nil {
+		log.Printf("telegram: cannot read report: %v", err)
+		return fmt.Errorf("telegram: stat report: %w", err)
+	}
+
+	size := info.Size()
+	if size > maxTelegramFileSize {
+		err := fmt.Errorf("telegram: report %s is %.1f MB, file exceeds Bot API limit (%d MB)",
+			filepath.Base(filePath), float64(size)/(1024*1024), maxTelegramFileSize>>20)
+		log.Printf("%v", err)
+		return err
+	}
+
 	caption := telegram.Caption(time.Now())
 	if err := s.notifier.SendDocument(ctx, caption, filePath); err != nil {
 		log.Printf("telegram: publish failed: %v", err)
 		return err
 	}
 
-	if info, err := os.Stat(filePath); err == nil {
-		log.Printf("telegram: report published (%.1f MB)", float64(info.Size())/(1024*1024))
-	} else {
-		log.Println("telegram: report published")
-	}
+	log.Printf("telegram: report published (%.1f MB)", float64(size)/(1024*1024))
 
 	return nil
 }
