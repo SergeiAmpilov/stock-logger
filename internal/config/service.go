@@ -1,8 +1,10 @@
 package config
 
 import (
+	"log"
 	"os"
 	"strconv"
+	"strings"
 )
 
 // Service handles configuration management
@@ -43,5 +45,33 @@ func (s *Service) Init() (*Config, error) {
 		config.EmailRecipients = []string{recipients}
 	}
 
+	initTelegram(config)
+
 	return config, nil
+}
+
+// initTelegram reads and validates the Telegram delivery settings.
+// Invalid or missing settings do not stop the application: Telegram is simply disabled.
+func initTelegram(config *Config) {
+	token := strings.TrimSpace(os.Getenv("TELEGRAM_BOT_TOKEN"))
+	chatID := strings.TrimSpace(os.Getenv("TELEGRAM_CHAT_ID"))
+
+	if token == "" {
+		log.Println("telegram disabled: TELEGRAM_BOT_TOKEN is not set")
+		return
+	}
+
+	if !isGroupChatID(chatID) {
+		log.Printf("telegram disabled: TELEGRAM_CHAT_ID must be a negative group id, got %q", chatID)
+		return
+	}
+
+	config.TelegramBotToken = token
+	config.TelegramChatID = chatID
+}
+
+// isGroupChatID reports whether the value is a negative numeric chat id (group or supergroup)
+func isGroupChatID(chatID string) bool {
+	id, err := strconv.ParseInt(chatID, 10, 64)
+	return err == nil && id < 0
 }

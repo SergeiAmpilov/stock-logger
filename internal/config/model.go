@@ -12,4 +12,7 @@ type Config struct {
 	Port            string
 	Password        string
 	JwtSecret       string
+
+	TelegramBotToken string
+	TelegramChatID   string // negative id of the private group, single target for all publications
 }
