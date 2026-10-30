@@ -17,6 +17,7 @@ import (
 	"stock-logger/internal/reports/repository"
 	reports_service "stock-logger/internal/reports/service"
 	"stock-logger/internal/router"
+	"stock-logger/internal/telegram"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -68,8 +69,16 @@ func main() {
 	reportsService := reports_service.NewService(repo, ozonSP)
 	reportsHandler := reports_handler.NewHandler(reportsService)
 
+	// Telegram delivery is optional: without token and group id the client reports itself as disabled
+	tgClient := telegram.New(config.TelegramBotToken, config.TelegramChatID)
+	if tgClient.Enabled() {
+		log.Println("Telegram delivery enabled")
+	} else {
+		log.Println("Telegram delivery disabled")
+	}
+
 	// Initialize Excel files service and handler
-	excelService := service_files.NewService(repo, filesXLSRepo)
+	excelService := service_files.NewService(repo, filesXLSRepo, tgClient)
 	excelHandler := handler_files.NewHandler(excelService)
 
 	authService := auth_service.NewService(config.Password, config.JwtSecret)

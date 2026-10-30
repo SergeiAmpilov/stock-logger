@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -10,22 +11,32 @@ import (
 	filesrepo "stock-logger/internal/filesxls/repository"
 	"stock-logger/internal/mail"
 	"stock-logger/internal/reports/repository"
+	"stock-logger/internal/telegram"
 	"time"
 
 	"github.com/xuri/excelize/v2"
 )
 
+// Notifier delivers a generated report to an external channel
+type Notifier interface {
+	Enabled() bool
+	SendDocument(ctx context.Context, caption, filePath string) error
+}
+
 // Service handles Excel file operations
 type Service struct {
 	repo         *repository.DBRepository
 	filesXLSRepo *filesrepo.DBRepository
+	notifier     Notifier
 }
 
-// NewService creates a new Excel files service
-func NewService(repo *repository.DBRepository, filesXLSRepo *filesrepo.DBRepository) *Service {
+// NewService creates a new Excel files service;
+// notifier may be nil when external delivery is not configured
+func NewService(repo *repository.DBRepository, filesXLSRepo *filesrepo.DBRepository, notifier Notifier) *Service {
 	return &Service{
 		repo:         repo,
 		filesXLSRepo: filesXLSRepo,
+		notifier:     notifier,
 	}
 }
 
@@ -180,6 +191,34 @@ func (s *Service) GetAllExcelFiles() ([]filesrepo.FileXLS, error) {
 	return s.filesXLSRepo.GetAllFileRecords()
 }
 
+// TelegramEnabled reports whether generated reports are published to Telegram
+func (s *Service) TelegramEnabled() bool {
+	return s.notifier != nil && s.notifier.Enabled()
+}
+
+// SendToTelegram publishes the generated report to the configured Telegram group.
+// Errors are returned to the caller for reporting; a delivery failure never stops the pipeline.
+func (s *Service) SendToTelegram(ctx context.Context, filePath string) error {
+	if !s.TelegramEnabled() {
+		log.Println("telegram: delivery skipped, bot token or chat id is not configured")
+		return nil
+	}
+
+	caption := telegram.Caption(time.Now())
+	if err := s.notifier.SendDocument(ctx, caption, filePath); err != nil {
+		log.Printf("telegram: publish failed: %v", err)
+		return err
+	}
+
+	if info, err := os.Stat(filePath); err == nil {
+		log.Printf("telegram: report published (%.1f MB)", float64(info.Size())/(1024*1024))
+	} else {
+		log.Println("telegram: report published")
+	}
+
+	return nil
+}
+
 // GenerateAndSendHourlyReport generates an Excel report and sends it via email
 func (s *Service) GenerateAndSendHourlyReport(appConfig *config.Config) error {
 	log.Println("Generating hourly Excel report...")
@@ -190,6 +229,9 @@ func (s *Service) GenerateAndSendHourlyReport(appConfig *config.Config) error {
 	} else {
 		log.Printf("Hourly Excel report generated successfully at: %s", filePath)
 	}
+
+	// Publish the file to Telegram; delivery problems must not break the email branch or the ticker
+	_ = s.SendToTelegram(context.Background(), filePath)
 
 	// Send email with the report
 	emailConfig := mail.EmailConfig{

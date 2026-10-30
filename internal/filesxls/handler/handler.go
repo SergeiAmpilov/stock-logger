@@ -1,10 +1,12 @@
 package handler
 
 import (
+	"context"
 	"log"
 
-	"github.com/gofiber/fiber/v2"
 	"stock-logger/internal/filesxls/service"
+
+	"github.com/gofiber/fiber/v2"
 )
 
 // Handler manages HTTP requests for Excel files
@@ -31,9 +33,25 @@ func (h *Handler) GenerateReport(c *fiber.Ctx) error {
 		})
 	}
 
+	// Publish the report to Telegram when delivery is configured;
+	// the request context is not reused so a client disconnect does not abort the upload
+	delivered := false
+	deliveryError := ""
+	if h.service.TelegramEnabled() {
+		if err := h.service.SendToTelegram(context.Background(), filePath); err != nil {
+			deliveryError = err.Error()
+		} else {
+			delivered = true
+		}
+	} else {
+		deliveryError = "telegram delivery is not configured"
+	}
+
 	return c.JSON(fiber.Map{
-		"message": "Excel report generated successfully",
-		"filePath": filePath,
+		"message":        "Excel report generated successfully",
+		"filePath":       filePath,
+		"delivered":      delivered,
+		"delivery_error": deliveryError,
 	})
 }
 
